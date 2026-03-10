@@ -30,3 +30,10 @@ dev = [
     "ruff (>=0.15.5,<0.16.0)",
     "httpx (>=0.28.1,<0.29.0)"
 ]
+
+[tool.poetry]
+name = "predictfc-backend"
+version = "0.1.0"
+description = "PredictFC REST API"
+authors = ["BradleyJason"]
+package-mode = false  
