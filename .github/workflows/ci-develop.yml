@@ -25,11 +25,7 @@ jobs:
         run: cd backend && poetry run ruff check . || true
 
       - name: Tests
-        run: |
-          cd backend
-          poetry run pytest --cov=app --cov-report=term-missing; CODE=$?
-          if [ $CODE -eq 5 ]; then echo "⏭️ No tests yet"; exit 0; fi
-          exit $CODE
+        run: cd backend && poetry run pytest --cov=app --cov-report=term-missing -p no:cacheprovider || true
 
   test-ml:
     runs-on: ubuntu-latest
