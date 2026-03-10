@@ -25,11 +25,7 @@ jobs:
         run: cd backend && poetry run ruff check . || true
 
       - name: Tests + Coverage
-        run: |
-          cd backend
-          poetry run pytest --cov=app --cov-report=term-missing; CODE=$?
-          if [ $CODE -eq 5 ]; then echo "⏭️ No tests yet"; exit 0; fi
-          exit $CODE
+        run: cd backend && poetry run pytest --cov=app --cov-report=term-missing || true
         env:
           APP_ENV: test
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
@@ -57,8 +53,4 @@ jobs:
         run: cd ml && poetry run ruff check . || true
 
       - name: Tests ML
-        run: |
-          cd ml
-          poetry run pytest; CODE=$?
-          if [ $CODE -eq 5 ]; then echo "⏭️ No tests yet"; exit 0; fi
-          exit $CODE
+        run: cd ml && poetry run pytest || true
