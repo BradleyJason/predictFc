@@ -19,6 +19,8 @@ poetry.lock
 /ml/data/processed/*
 !ml/data/raw/.gitkeep
 !ml/data/processed/.gitkeep
+!ml/data/raw/*.dvc
+!ml/data/processed/*.dvc
 
 # MLflow
 mlruns/
