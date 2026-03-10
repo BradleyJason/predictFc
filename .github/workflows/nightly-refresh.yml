@@ -1,0 +1,46 @@
+name: Nightly — Data Refresh
+
+on:
+  schedule:
+    - cron: '0 2 * * *'  # Chaque nuit à 2h UTC
+  workflow_dispatch:       # Déclenchement manuel possible
+
+jobs:
+  refresh-data:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Poetry
+        run: curl -sSL https://install.python-poetry.org | python3 -
+
+      - name: Install ML dependencies
+        run: cd ml && poetry install
+
+      - name: Configure DVC
+        run: |
+          dvc remote modify origin --local auth basic
+          dvc remote modify origin --local user BradleyJason
+          dvc remote modify origin --local password ${{ secrets.DAGSHUB_TOKEN }}
+
+      - name: Refresh data
+        run: cd ml && poetry run python pipelines/ingest.py
+        env:
+          FOOTBALL_DATA_API_KEY: ${{ secrets.FOOTBALL_DATA_API_KEY }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      - name: Push new data to DVC
+        run: dvc push
+
+      - name: Commit DVC changes
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add *.dvc
+          git diff --staged --quiet || git commit -m "data(nightly): refresh football data $(date +'%Y-%m-%d')"
+          git push origin develop
