@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+dist/
+build/
+
+# Poetry
+poetry.lock
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# DVC
+/ml/data/raw/*
+/ml/data/processed/*
+!ml/data/raw/.gitkeep
+!ml/data/processed/.gitkeep
+
+# MLflow
+mlruns/
+mlartifacts/
+
+# Models
+*.pkl
+*.joblib
+*.pt
+*.h5
+
+# IDE
+.vscode/settings.json
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+*.log
+
+# Node
+node_modules/
+frontend/dist/
+frontend/.next/
