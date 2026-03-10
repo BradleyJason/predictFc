@@ -34,4 +34,4 @@ class SmartTicket(Base):
 
     def __repr__(self) -> str:
         """Représentation lisible du modèle."""
-        return f"<SmartTicket match={self.match_id} proba={self.combined_proba}>"
+        return f"<SmartTicket match={self.match_id} proba={self.combined_proba:.2f}>"
