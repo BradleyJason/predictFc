@@ -1,0 +1,38 @@
+version: '3.9'
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile.backend
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    restart: always
+    networks:
+      - predictfc-network
+
+  frontend:
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile.frontend
+    ports:
+      - "5173:5173"
+    env_file:
+      - .env
+    restart: always
+    depends_on:
+      - backend
+    networks:
+      - predictfc-network
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    networks:
+      - predictfc-network
+
+networks:
+  predictfc-network:
+    driver: bridge

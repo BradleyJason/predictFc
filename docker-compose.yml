@@ -1,0 +1,55 @@
+version: '3.9'
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile.backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+    env_file:
+      - .env
+    depends_on:
+      - redis
+    networks:
+      - predictfc-network
+
+  ml:
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile.ml
+    volumes:
+      - ./ml:/app
+    env_file:
+      - .env
+    networks:
+      - predictfc-network
+
+  frontend:
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile.frontend
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    env_file:
+      - .env
+    depends_on:
+      - backend
+    networks:
+      - predictfc-network
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    networks:
+      - predictfc-network
+
+networks:
+  predictfc-network:
+    driver: bridge

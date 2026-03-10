@@ -1,0 +1,21 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Installer Poetry
+RUN pip install poetry --break-system-packages
+
+# Copier les fichiers de dépendances
+COPY backend/pyproject.toml ./
+COPY backend/poetry.lock* ./
+
+# Installer les dépendances sans les dev
+RUN poetry config virtualenvs.create false \
+    && poetry install --only main --no-interaction
+
+# Copier le code
+COPY backend/ .
+
+EXPOSE 8000
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
