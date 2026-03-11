@@ -9,7 +9,7 @@ from app.core.database import Base
 
 
 class PlayerStat(Base):
-    """Stats d'un joueur sur un match donné."""
+    """Stats d'un joueur sur un match donné (buts, passes, minutes)."""
 
     __tablename__ = "player_stats"
     __table_args__ = (UniqueConstraint("player_id", "match_id", name="uq_player_match"),)
@@ -20,11 +20,14 @@ class PlayerStat(Base):
     goals: Mapped[int] = mapped_column(Integer, default=0)
     assists: Mapped[int] = mapped_column(Integer, default=0)
     minutes: Mapped[int] = mapped_column(Integer, default=0)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
 
+    # Relations
     player: Mapped["Player"] = relationship("Player", back_populates="stats")  # noqa: F821
     match: Mapped["Match"] = relationship("Match", back_populates="player_stats")  # noqa: F821
 
     def __repr__(self) -> str:
-        """Représentation lisible."""
-        return f"<PlayerStat player={self.player_id} match={self.match_id}>"
+        """Représentation lisible du modèle."""
+        return f"<PlayerStat player={self.player_id} match={self.match_id} goals={self.goals}>"

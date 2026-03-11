@@ -17,12 +17,15 @@ class Competition(Base):
     code: Mapped[str] = mapped_column(String(10), unique=True, nullable=False)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     country: Mapped[str | None] = mapped_column(String(50))
-    season: Mapped[str | None] = mapped_column(String(10))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    season: Mapped[str | None] = mapped_column(String(10))  # ex: "2024-25"
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
 
+    # Relations
     teams: Mapped[list["Team"]] = relationship("Team", back_populates="competition")  # noqa: F821
     matches: Mapped[list["Match"]] = relationship("Match", back_populates="competition")  # noqa: F821
 
     def __repr__(self) -> str:
-        """Représentation lisible."""
+        """Représentation lisible du modèle."""
         return f"<Competition {self.code} ({self.season})>"
