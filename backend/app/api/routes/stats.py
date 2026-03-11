@@ -23,7 +23,7 @@ class MatchResult(BaseModel):
     away_team: str
     home_score: int
     away_score: int
-    result: str          # "W", "D", "L" du point de vue de team_id
+    result: str
     competition: str
 
 class TeamForm(BaseModel):
@@ -40,18 +40,21 @@ class TeamForm(BaseModel):
     goals_conceded_avg: float
     win_pct: float
     clean_sheets: int
-    form_5: list[str]        # ["W","W","D","L","W"] les 5 derniers
+    form_5: list[str]
     last_5: list[MatchResult]
 
 class H2HResult(BaseModel):
     total_played: int
-    home_wins: int           # victoires de l'équipe domicile du match en cours
+    home_wins: int
     away_wins: int
     draws: int
     last_5: list[MatchResult]
 
 class MatchStatsOut(BaseModel):
     match_id: int
+    is_finished: bool
+    # Résultat du match courant (si FINISHED)
+    match_result: Optional[MatchResult] = None
     home_stats: TeamForm
     away_stats: TeamForm
     h2h: H2HResult
@@ -62,19 +65,19 @@ class MatchStatsOut(BaseModel):
 def _team_form(
     db: Session,
     team_id: int,
-    exclude_match_id: int,
+    exclude_match_id: Optional[int],  # None = inclure tous les matchs
     n: int = 10,
 ) -> list[Match]:
-    """Retourne les n derniers matchs terminés d'une équipe."""
+    conditions = [
+        Match.status == "FINISHED",
+        or_(Match.home_team_id == team_id, Match.away_team_id == team_id),
+    ]
+    if exclude_match_id is not None:
+        conditions.append(Match.id != exclude_match_id)
+
     stmt = (
         select(Match)
-        .where(
-            and_(
-                Match.status == "FINISHED",
-                Match.id != exclude_match_id,
-                or_(Match.home_team_id == team_id, Match.away_team_id == team_id),
-            )
-        )
+        .where(and_(*conditions))
         .order_by(Match.match_date.desc())
         .limit(n)
     )
@@ -82,21 +85,19 @@ def _team_form(
 
 
 def _result_for_team(match: Match, team_id: int) -> str:
-    """Retourne W/D/L du point de vue de team_id."""
     if match.home_score is None or match.away_score is None:
         return "?"
     if match.home_team_id == team_id:
-        if match.home_score > match.away_score:   return "W"
-        if match.home_score == match.away_score:  return "D"
+        if match.home_score > match.away_score:  return "W"
+        if match.home_score == match.away_score: return "D"
         return "L"
     else:
-        if match.away_score > match.home_score:   return "W"
-        if match.away_score == match.home_score:  return "D"
+        if match.away_score > match.home_score:  return "W"
+        if match.away_score == match.home_score: return "D"
         return "L"
 
 
 def _goals_for_team(match: Match, team_id: int) -> tuple[int, int]:
-    """Retourne (buts marqués, buts encaissés) pour team_id."""
     if match.home_score is None or match.away_score is None:
         return 0, 0
     if match.home_team_id == team_id:
@@ -123,21 +124,20 @@ def _compute_team_stats(
     team_id: int,
     team_name: str,
     crest_url: Optional[str],
-    exclude_match_id: int,
+    exclude_match_id: Optional[int],  # None = inclure le match courant (FINISHED)
 ) -> TeamForm:
     matches = _team_form(db, team_id, exclude_match_id, n=10)
 
     wins = draws = losses = goals_scored = goals_conceded = clean_sheets = 0
-
     for m in matches:
         r = _result_for_team(m, team_id)
         gs, gc = _goals_for_team(m, team_id)
-        goals_scored    += gs
-        goals_conceded  += gc
+        goals_scored   += gs
+        goals_conceded += gc
         if gc == 0: clean_sheets += 1
-        if r == "W": wins   += 1
-        elif r == "D": draws += 1
-        else: losses += 1
+        if r == "W":   wins   += 1
+        elif r == "D": draws  += 1
+        else:          losses += 1
 
     played = len(matches)
     last_5_matches = matches[:5]
@@ -165,20 +165,21 @@ def _compute_h2h(
     db: Session,
     home_team_id: int,
     away_team_id: int,
-    exclude_match_id: int,
+    exclude_match_id: Optional[int],
 ) -> H2HResult:
+    conditions = [
+        Match.status == "FINISHED",
+        or_(
+            and_(Match.home_team_id == home_team_id, Match.away_team_id == away_team_id),
+            and_(Match.home_team_id == away_team_id, Match.away_team_id == home_team_id),
+        ),
+    ]
+    if exclude_match_id is not None:
+        conditions.append(Match.id != exclude_match_id)
+
     stmt = (
         select(Match)
-        .where(
-            and_(
-                Match.status == "FINISHED",
-                Match.id != exclude_match_id,
-                or_(
-                    and_(Match.home_team_id == home_team_id, Match.away_team_id == away_team_id),
-                    and_(Match.home_team_id == away_team_id, Match.away_team_id == home_team_id),
-                ),
-            )
-        )
+        .where(and_(*conditions))
         .order_by(Match.match_date.desc())
         .limit(10)
     )
@@ -188,15 +189,14 @@ def _compute_h2h(
     for m in matches:
         if m.home_score is None or m.away_score is None:
             continue
-        # On compte du point de vue de home_team_id
         if m.home_team_id == home_team_id:
-            if m.home_score > m.away_score:   home_wins += 1
-            elif m.home_score == m.away_score: draws += 1
-            else: away_wins += 1
+            if m.home_score > m.away_score:    home_wins += 1
+            elif m.home_score == m.away_score: draws     += 1
+            else:                              away_wins += 1
         else:
-            if m.away_score > m.home_score:   home_wins += 1
-            elif m.away_score == m.home_score: draws += 1
-            else: away_wins += 1
+            if m.away_score > m.home_score:    home_wins += 1
+            elif m.away_score == m.home_score: draws     += 1
+            else:                              away_wins += 1
 
     last_5 = [_build_match_result(m, home_team_id) for m in matches[:5]]
 
@@ -213,36 +213,45 @@ def _compute_h2h(
 
 @router.get("/matches/{match_id}/stats", response_model=MatchStatsOut)
 def get_match_stats(match_id: int, db: Session = Depends(get_db)) -> MatchStatsOut:
-    """Retourne les stats détaillées (forme, H2H) pour les deux équipes du match."""
-    match = db.scalar(
-        select(Match)
-        .where(Match.id == match_id)
-    )
+    """Stats détaillées pour les deux équipes.
+
+    - Si le match est FINISHED : inclut le match dans les stats (forme, H2H)
+      et retourne match_result avec le score final.
+    - Si le match est à venir : exclut le match des stats (comportement original).
+    """
+    match = db.scalar(select(Match).where(Match.id == match_id))
     if not match:
         raise HTTPException(status_code=404, detail=f"Match {match_id} introuvable.")
     if not match.home_team_id or not match.away_team_id:
         raise HTTPException(status_code=422, detail="Équipes non assignées pour ce match.")
 
-    # Charger les équipes
     home_team = match.home_team
     away_team = match.away_team
+    is_finished = match.status == "FINISHED"
+
+    # Pour les matchs terminés : on inclut ce match dans les stats (exclude=None)
+    # Pour les matchs à venir : on l'exclut (exclude=match_id)
+    exclude_id = None if is_finished else match_id
 
     home_stats = _compute_team_stats(
-        db, home_team.id,
-        home_team.name,
-        home_team.crest_url,
-        exclude_match_id=match_id,
+        db, home_team.id, home_team.name, home_team.crest_url,
+        exclude_match_id=exclude_id,
     )
     away_stats = _compute_team_stats(
-        db, away_team.id,
-        away_team.name,
-        away_team.crest_url,
-        exclude_match_id=match_id,
+        db, away_team.id, away_team.name, away_team.crest_url,
+        exclude_match_id=exclude_id,
     )
-    h2h = _compute_h2h(db, home_team.id, away_team.id, exclude_match_id=match_id)
+    h2h = _compute_h2h(db, home_team.id, away_team.id, exclude_match_id=exclude_id)
+
+    # Résultat du match courant si FINISHED
+    match_result = None
+    if is_finished and match.home_score is not None:
+        match_result = _build_match_result(match, home_team.id)
 
     return MatchStatsOut(
         match_id=match_id,
+        is_finished=is_finished,
+        match_result=match_result,
         home_stats=home_stats,
         away_stats=away_stats,
         h2h=h2h,

@@ -16,7 +16,6 @@ const RESULT_COLOR = { W: '#00ff88', D: '#ffcc00', L: '#ff4455' }
 
 export default function MatchDetail() {
   const { id } = useParams()
-
   const [match,      setMatch]      = useState(null)
   const [matchErr,   setMatchErr]   = useState(null)
   const [matchLoad,  setMatchLoad]  = useState(true)
@@ -52,80 +51,211 @@ export default function MatchDetail() {
   return (
     <div className="page-container" style={{ maxWidth: '1200px', margin: '0 auto', padding: '36px 24px' }}>
       <Link to="/" className="back-link">← RETOUR AUX MATCHS</Link>
-
       <MatchHeader match={match} />
 
       {isFinished ? (
-        /* ── Vue match terminé : stats H2H uniquement, pas d'analyse ── */
-        <div style={{ marginTop: '24px' }}>
-          {statsLoad ? (
-            <MiniLoader />
-          ) : stats ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <FormCard home={stats.home_stats} away={stats.away_stats} />
-              <H2HCard h2h={stats.h2h} homeStats={stats.home_stats} awayStats={stats.away_stats} />
-              <Last5Card home={stats.home_stats} away={stats.away_stats} />
-            </div>
-          ) : (
-            <NoStats />
-          )}
-        </div>
+        <FinishedMatchView stats={stats} statsLoad={statsLoad} />
       ) : (
-        /* ── Vue match à venir : stats + analyse côte à côte ── */
-        <div
-          className="match-detail-layout"
-          style={{
-            display: 'grid',
-            gridTemplateColumns: analyzed ? '1fr 1fr' : '1fr auto',
-            gap: '20px',
-            marginTop: '24px',
-            alignItems: 'start',
-          }}
-        >
-          {/* Colonne gauche : Stats */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            {statsLoad ? (
-              <MiniLoader />
-            ) : stats ? (
-              <>
-                <TeamComparisonCard home={stats.home_stats} away={stats.away_stats} />
-                <FormCard home={stats.home_stats} away={stats.away_stats} />
-                <H2HCard h2h={stats.h2h} homeStats={stats.home_stats} awayStats={stats.away_stats} />
-                <Last5Card home={stats.home_stats} away={stats.away_stats} />
-              </>
-            ) : (
-              <NoStats />
-            )}
-          </div>
-
-          {/* Colonne droite : Analyse */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            {!analyzed ? (
-              <div>
-                <AnalyzeButton loading={predLoad} onClick={() => handleAnalyze(false)} />
-                {predErr && <ErrorBanner message={predErr} />}
-              </div>
-            ) : (
-              <>
-                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                  <button
-                    onClick={() => handleAnalyze(true)}
-                    style={{
-                      fontFamily: 'var(--font-mono)', fontSize: '10px', letterSpacing: '0.12em',
-                      color: 'var(--text-muted)', background: 'transparent',
-                      border: '1px solid var(--border)', borderRadius: '3px',
-                      padding: '6px 14px', cursor: 'pointer',
-                    }}
-                  >
-                    ↺ RAFRAÎCHIR
-                  </button>
-                </div>
-                {prediction && <PredictionSections prediction={prediction} />}
-              </>
-            )}
-          </div>
-        </div>
+        <UpcomingMatchView
+          stats={stats} statsLoad={statsLoad}
+          prediction={prediction} predLoad={predLoad}
+          predErr={predErr} analyzed={analyzed}
+          onAnalyze={handleAnalyze}
+        />
       )}
+    </div>
+  )
+}
+
+/* ══════════════════════════════════════════
+   VUE MATCH TERMINÉ
+   Affiche uniquement les stats de la rencontre :
+   résultat, forme des équipes, H2H, derniers matchs
+══════════════════════════════════════════ */
+function FinishedMatchView({ stats, statsLoad }) {
+  if (statsLoad) return <div style={{ marginTop: '24px' }}><MiniLoader /></div>
+  if (!stats)    return <div style={{ marginTop: '24px' }}><NoStats /></div>
+
+  const { home_stats, away_stats, h2h, match_result } = stats
+
+  return (
+    <div style={{ marginTop: '24px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+
+      {/* ── Résumé du match ── */}
+      {match_result && (
+        <MatchSummaryCard
+          matchResult={match_result}
+          homeStats={home_stats}
+          awayStats={away_stats}
+        />
+      )}
+
+      {/* ── Forme récente ── */}
+      <FormCard home={home_stats} away={away_stats} includesThisMatch />
+
+      {/* ── H2H ── */}
+      <H2HCard h2h={h2h} homeStats={home_stats} awayStats={away_stats} />
+
+      {/* ── Derniers matchs (incluant ce match) ── */}
+      <Last5Card home={home_stats} away={away_stats} />
+
+    </div>
+  )
+}
+
+/* ── Résumé visuel du match terminé ── */
+function MatchSummaryCard({ matchResult, homeStats, awayStats }) {
+  const homeWon  = matchResult.home_score > matchResult.away_score
+  const awayWon  = matchResult.away_score > matchResult.home_score
+  const isDraw   = matchResult.home_score === matchResult.away_score
+
+  const homeColor = homeWon ? '#00ff88' : isDraw ? '#ffcc00' : '#ff4455'
+  const awayColor = awayWon ? '#00ff88' : isDraw ? '#ffcc00' : '#ff4455'
+
+  return (
+    <StatCard title="RÉSULTAT DE LA RENCONTRE">
+      {/* Score central */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '20px', padding: '12px 0 20px' }}>
+
+        {/* Équipe domicile */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '6px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {homeStats.crest_url && (
+              <img src={homeStats.crest_url} alt="" width={28} height={28}
+                style={{ objectFit: 'contain' }}
+                onError={(e) => { e.target.style.display = 'none' }}
+              />
+            )}
+            <span style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(14px, 2.5vw, 20px)', color: 'var(--text-primary)', letterSpacing: '0.03em' }}>
+              {homeStats.team_name}
+            </span>
+          </div>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '9px', letterSpacing: '0.14em', color: homeColor, fontWeight: 700 }}>
+            {homeWon ? '✓ VICTOIRE' : isDraw ? '= NUL' : '✗ DÉFAITE'} · DOMICILE
+          </span>
+        </div>
+
+        {/* Score */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'clamp(32px, 6vw, 52px)', fontWeight: 700, color: homeColor, textShadow: `0 0 20px ${homeColor}55` }}>
+            {matchResult.home_score}
+          </span>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '20px', color: 'var(--text-muted)' }}>—</span>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'clamp(32px, 6vw, 52px)', fontWeight: 700, color: awayColor, textShadow: `0 0 20px ${awayColor}55` }}>
+            {matchResult.away_score}
+          </span>
+        </div>
+
+        {/* Équipe extérieure */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(14px, 2.5vw, 20px)', color: 'var(--text-primary)', letterSpacing: '0.03em', textAlign: 'right' }}>
+              {awayStats.team_name}
+            </span>
+            {awayStats.crest_url && (
+              <img src={awayStats.crest_url} alt="" width={28} height={28}
+                style={{ objectFit: 'contain' }}
+                onError={(e) => { e.target.style.display = 'none' }}
+              />
+            )}
+          </div>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '9px', letterSpacing: '0.14em', color: awayColor, fontWeight: 700, textAlign: 'right' }}>
+            {awayWon ? '✓ VICTOIRE' : isDraw ? '= NUL' : '✗ DÉFAITE'} · EXTÉRIEUR
+          </span>
+        </div>
+      </div>
+
+      {/* Séparateur */}
+      <div style={{ height: '1px', background: 'var(--border)', margin: '4px 0 16px' }} />
+
+      {/* Mini stats comparatives : buts marqués / encaissés sur 10 matchs */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+        {[
+          { stats: homeStats, label: 'DOMICILE' },
+          { stats: awayStats, label: 'EXTÉRIEUR' },
+        ].map(({ stats, label }) => (
+          <div key={stats.team_id} style={{ background: 'var(--bg-elevated)', borderRadius: '4px', padding: '12px 14px' }}>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '8px', color: 'var(--text-muted)', letterSpacing: '0.12em', marginBottom: '10px' }}>
+              {label} · {stats.played} MATCHS RÉCENTS
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              {[
+                { label: 'Victoires',      value: stats.wins,             color: '#00ff88' },
+                { label: 'Nuls',           value: stats.draws,            color: '#ffcc00' },
+                { label: 'Défaites',       value: stats.losses,           color: '#ff4455' },
+                { label: 'Buts marqués',   value: stats.goals_scored,     color: 'var(--accent-cyan)' },
+                { label: 'Buts encaissés', value: stats.goals_conceded,   color: 'var(--text-secondary)' },
+              ].map(({ label, value, color }) => (
+                <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '9px', color: 'var(--text-muted)' }}>{label}</span>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '13px', fontWeight: 700, color }}>{value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </StatCard>
+  )
+}
+
+/* ══════════════════════════════════════════
+   VUE MATCH À VENIR
+══════════════════════════════════════════ */
+function UpcomingMatchView({ stats, statsLoad, prediction, predLoad, predErr, analyzed, onAnalyze }) {
+  return (
+    <div
+      className="match-detail-layout"
+      style={{
+        display: 'grid',
+        gridTemplateColumns: analyzed ? '1fr 1fr' : '1fr auto',
+        gap: '20px',
+        marginTop: '24px',
+        alignItems: 'start',
+      }}
+    >
+      {/* Colonne gauche : Stats */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+        {statsLoad ? (
+          <MiniLoader />
+        ) : stats ? (
+          <>
+            <TeamComparisonCard home={stats.home_stats} away={stats.away_stats} />
+            <FormCard home={stats.home_stats} away={stats.away_stats} />
+            <H2HCard h2h={stats.h2h} homeStats={stats.home_stats} awayStats={stats.away_stats} />
+            <Last5Card home={stats.home_stats} away={stats.away_stats} />
+          </>
+        ) : (
+          <NoStats />
+        )}
+      </div>
+
+      {/* Colonne droite : Analyse */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+        {!analyzed ? (
+          <div>
+            <AnalyzeButton loading={predLoad} onClick={() => onAnalyze(false)} />
+            {predErr && <ErrorBanner message={predErr} />}
+          </div>
+        ) : (
+          <>
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => onAnalyze(true)}
+                style={{
+                  fontFamily: 'var(--font-mono)', fontSize: '10px', letterSpacing: '0.12em',
+                  color: 'var(--text-muted)', background: 'transparent',
+                  border: '1px solid var(--border)', borderRadius: '3px',
+                  padding: '6px 14px', cursor: 'pointer',
+                }}
+              >
+                ↺ RAFRAÎCHIR
+              </button>
+            </div>
+            {prediction && <PredictionSections prediction={prediction} />}
+          </>
+        )}
+      </div>
     </div>
   )
 }
@@ -146,11 +276,25 @@ function MatchHeader({ match }) {
       {/* Compétition */}
       <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '24px' }}>
         {match.competition?.crest_url && (
-          <img src={match.competition.crest_url} alt="" width={20} height={20} style={{ objectFit: 'contain' }} onError={(e) => { e.target.style.display = 'none' }} />
+          <img src={match.competition.crest_url} alt="" width={20} height={20}
+            style={{ objectFit: 'contain' }}
+            onError={(e) => { e.target.style.display = 'none' }}
+          />
         )}
         <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-muted)', letterSpacing: '0.06em' }}>
           {match.competition?.name}{match.matchday ? ` · JOURNÉE ${match.matchday}` : ''}
         </span>
+        {/* Badge TERMINÉ */}
+        {match.status === 'FINISHED' && (
+          <span style={{
+            fontFamily: 'var(--font-mono)', fontSize: '8px', letterSpacing: '0.14em',
+            padding: '3px 8px', borderRadius: '2px',
+            background: 'rgba(0,255,136,0.1)', border: '1px solid rgba(0,255,136,0.3)',
+            color: 'var(--accent-green)',
+          }}>
+            TERMINÉ
+          </span>
+        )}
       </div>
 
       {/* Équipes */}
@@ -161,9 +305,7 @@ function MatchHeader({ match }) {
         {/* Domicile */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           {match.home_team?.crest_url && (
-            <img
-              className="match-header-logo-lg"
-              src={match.home_team.crest_url} alt="" width={48} height={48}
+            <img className="match-header-logo-lg" src={match.home_team.crest_url} alt="" width={48} height={48}
               style={{ objectFit: 'contain' }}
               onError={(e) => { e.target.style.display = 'none' }}
             />
@@ -192,9 +334,7 @@ function MatchHeader({ match }) {
             <div style={{ fontFamily: 'var(--font-mono)', fontSize: '9px', letterSpacing: '0.16em', color: 'var(--text-muted)' }}>EXTÉRIEUR</div>
           </div>
           {match.away_team?.crest_url && (
-            <img
-              className="match-header-logo-lg"
-              src={match.away_team.crest_url} alt="" width={48} height={48}
+            <img className="match-header-logo-lg" src={match.away_team.crest_url} alt="" width={48} height={48}
               style={{ objectFit: 'contain' }}
               onError={(e) => { e.target.style.display = 'none' }}
             />
@@ -209,7 +349,7 @@ function MatchHeader({ match }) {
   )
 }
 
-/* ── Comparaison stats globales ── */
+/* ── Comparaison stats globales (matchs à venir uniquement) ── */
 function TeamComparisonCard({ home, away }) {
   const rows = [
     { label: 'Victoires',       h: home.wins,             a: away.wins,             max: Math.max(home.played, away.played) },
@@ -233,7 +373,6 @@ function TeamComparisonCard({ home, away }) {
           {away.crest_url && <img src={away.crest_url} alt="" width={22} height={22} style={{ objectFit: 'contain' }} onError={(e) => { e.target.style.display = 'none' }} />}
         </div>
       </div>
-
       {rows.map(({ label, h, a, max, dec, suffix, inverse }) => {
         const hVal   = dec ? h.toFixed(dec) : h
         const aVal   = dec ? a.toFixed(dec) : a
@@ -241,7 +380,6 @@ function TeamComparisonCard({ home, away }) {
         const aPct   = Math.min((a / max) * 100, 100)
         const hColor = inverse ? (h <= a ? '#00ff88' : '#ff4455') : (h >= a ? '#00ff88' : '#ff4455')
         const aColor = inverse ? (a <= h ? '#00ff88' : '#ff4455') : (a >= h ? '#00ff88' : '#ff4455')
-
         return (
           <div key={label} style={{ marginBottom: '12px' }}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: '8px', alignItems: 'center', marginBottom: '4px' }}>
@@ -266,9 +404,9 @@ function TeamComparisonCard({ home, away }) {
 }
 
 /* ── Forme récente ── */
-function FormCard({ home, away }) {
+function FormCard({ home, away, includesThisMatch = false }) {
   return (
-    <StatCard title="FORME RÉCENTE — 5 DERNIERS MATCHS">
+    <StatCard title={`FORME RÉCENTE — 5 DERNIERS MATCHS${includesThisMatch ? ' (CE MATCH INCLUS)' : ''}`}>
       <div className="two-col-stats" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
         {[{ stats: home }, { stats: away }].map(({ stats }, idx) => (
           <div key={idx}>
@@ -278,7 +416,14 @@ function FormCard({ home, away }) {
             </div>
             <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
               {stats.form_5.map((r, i) => (
-                <div key={i} style={{ width: '32px', height: '32px', borderRadius: '3px', background: `${RESULT_COLOR[r]}22`, border: `1px solid ${RESULT_COLOR[r]}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div key={i} style={{
+                  width: '32px', height: '32px', borderRadius: '3px',
+                  background: `${RESULT_COLOR[r]}22`,
+                  border: `1px solid ${RESULT_COLOR[r]}`,
+                  // Le premier élément (index 0 = le plus récent) est ce match
+                  boxShadow: includesThisMatch && i === 0 ? `0 0 10px ${RESULT_COLOR[r]}88` : 'none',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
                   <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', fontWeight: 700, color: RESULT_COLOR[r] }}>{r}</span>
                 </div>
               ))}
@@ -300,9 +445,7 @@ function H2HCard({ h2h, homeStats, awayStats }) {
       <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-muted)' }}>Aucune confrontation directe en BDD.</span>
     </StatCard>
   )
-
   const total = h2h.total_played
-
   return (
     <StatCard title={`H2H — ${total} CONFRONTATIONS`}>
       <div style={{ marginBottom: '16px' }}>
@@ -326,7 +469,6 @@ function H2HCard({ h2h, homeStats, awayStats }) {
           </div>
         </div>
       </div>
-
       {h2h.last_5.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
           <div style={{ fontFamily: 'var(--font-mono)', fontSize: '8px', color: 'var(--text-muted)', letterSpacing: '0.12em', marginBottom: '4px' }}>DERNIÈRES RENCONTRES</div>
@@ -388,7 +530,6 @@ function PredictionSections({ prediction }) {
           </div>
         )}
       </StatCard>
-
       <StatCard title="OVER / UNDER">
         {[
           { label: 'OVER 0.5', value: prediction.over_05_proba },
@@ -400,18 +541,15 @@ function PredictionSections({ prediction }) {
           <PredictionBar key={label} label={label} value={value} delay={80 + i * 100} />
         ))}
       </StatCard>
-
       <StatCard title="LES DEUX ÉQUIPES MARQUENT">
         <PredictionBar label="OUI" value={prediction.btts_proba}            delay={100} barHeight={6} />
         <PredictionBar label="NON" value={1 - (prediction.btts_proba ?? 0)} delay={200} barHeight={6} />
       </StatCard>
-
       <StatCard title="DOUBLE CHANCE">
         <PredictionBar label="1X — DOM. OU NUL" value={prediction.home_draw_proba} delay={100} />
         <PredictionBar label="X2 — EXT. OU NUL" value={prediction.away_draw_proba} delay={200} />
         <PredictionBar label="12 — DOM. OU EXT." value={prediction.home_away_proba} delay={300} />
       </StatCard>
-
       {prediction.top_scores?.length > 0 && (
         <StatCard title="SCORES EXACTS LES PLUS PROBABLES">
           {prediction.top_scores.slice(0, 5).map((s, i) => (
@@ -419,13 +557,11 @@ function PredictionSections({ prediction }) {
           ))}
         </StatCard>
       )}
-
       {prediction.confidence_score != null && (
         <StatCard title="INDICE DE CONFIANCE">
           <ConfidenceGauge score={prediction.confidence_score} />
         </StatCard>
       )}
-
       {prediction.disclaimer && (
         <div style={{ padding: '12px 16px', border: '1px solid var(--border)', borderRadius: '3px', fontFamily: 'var(--font-mono)', fontSize: '10px', color: 'var(--text-muted)', lineHeight: 1.7 }}>
           ⚠ {prediction.disclaimer}
@@ -435,7 +571,7 @@ function PredictionSections({ prediction }) {
   )
 }
 
-/* ── Shared components ── */
+/* ── Composants partagés ── */
 function StatCard({ title, children }) {
   return (
     <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: '4px', padding: '20px' }}>
@@ -452,7 +588,10 @@ function AnalyzeButton({ loading, onClick }) {
   return (
     <button onClick={onClick} disabled={loading} className="analyze-btn">
       {loading
-        ? <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' }}><span style={{ color: 'var(--accent-green)', animation: 'pulseGlow 1s infinite' }}>■ ■ ■</span> ANALYSE EN COURS...</span>
+        ? <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' }}>
+            <span style={{ color: 'var(--accent-green)', animation: 'pulseGlow 1s infinite' }}>■ ■ ■</span>
+            ANALYSE EN COURS...
+          </span>
         : '⬡  ANALYSER CE MATCH'}
     </button>
   )
