@@ -5,28 +5,19 @@
    Industrial / Data-driven terminal aesthetic
 ───────────────────────────────────────────── */
 :root {
-  /* Backgrounds */
   --bg-deep:     #06060e;
   --bg-surface:  #0d0d1c;
   --bg-elevated: #13132a;
-
-  /* Borders */
   --border:        #1e1e38;
   --border-bright: #2e2e58;
-
-  /* Text */
   --text-primary:   #c8cce8;
   --text-secondary: #7e80a0;
   --text-muted:     #44456a;
-
-  /* Accents */
   --accent-green:   #00ff88;
   --accent-green-d: rgba(0, 255, 136, 0.10);
   --accent-cyan:    #00ccff;
   --accent-amber:   #ffcc00;
   --accent-red:     #ff4455;
-
-  /* Typography */
   --font-display: 'Bebas Neue', sans-serif;
   --font-ui:      'Chakra Petch', sans-serif;
   --font-mono:    'JetBrains Mono', monospace;
@@ -37,7 +28,7 @@
 * { margin: 0; padding: 0; }
 
 /* ── Body ── */
-body {
+html, body {
   background-color: var(--bg-deep);
   background-image:
     radial-gradient(ellipse 90% 50% at 50% 0%, rgba(0, 255, 136, 0.035) 0%, transparent 65%),
@@ -49,17 +40,14 @@ body {
   overflow-x: hidden;
 }
 
-/* Scanline overlay */
 body::after {
   content: '';
   position: fixed;
   inset: 0;
   background-image: repeating-linear-gradient(
     0deg,
-    transparent,
-    transparent 3px,
-    rgba(0, 0, 0, 0.12) 3px,
-    rgba(0, 0, 0, 0.12) 4px
+    transparent, transparent 3px,
+    rgba(0, 0, 0, 0.12) 3px, rgba(0, 0, 0, 0.12) 4px
   );
   pointer-events: none;
   z-index: 9998;
@@ -75,52 +63,42 @@ body::after {
   from { opacity: 0; transform: translateY(14px); }
   to   { opacity: 1; transform: translateY(0); }
 }
-
 @keyframes fadeIn {
   from { opacity: 0; }
   to   { opacity: 1; }
 }
-
 @keyframes pulseGlow {
   0%, 100% { opacity: 0.4; }
   50%       { opacity: 1;   }
 }
-
 @keyframes scannerPulse {
   0%   { box-shadow: 0 0 0 0 rgba(0, 255, 136, 0.4); }
   70%  { box-shadow: 0 0 0 8px rgba(0, 255, 136, 0); }
   100% { box-shadow: 0 0 0 0 rgba(0, 255, 136, 0); }
 }
-
 @keyframes shimmer {
   0%   { background-position: -200% center; }
   100% { background-position: 200% center; }
 }
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
 
-/* ── Utility classes ── */
-.animate-fade-up  { animation: fadeInUp 0.4s ease-out both; }
-.animate-fade-in  { animation: fadeIn 0.3s ease-out both; }
+/* ── Utilities ── */
+.animate-fade-up    { animation: fadeInUp 0.4s ease-out both; }
+.animate-fade-in    { animation: fadeIn 0.3s ease-out both; }
 .animate-pulse-glow { animation: pulseGlow 1.5s ease-in-out infinite; }
 
-/* ── Responsive helpers ── */
-.ticket-layout {
-  display: grid;
-  grid-template-columns: 1fr 380px;
-  gap: 24px;
-  align-items: start;
-}
+/* ══════════════════════════════════════════
+   NAVBAR
+══════════════════════════════════════════ */
+/* Desktop : liens visibles, hamburger caché */
+.nav-desktop { display: flex; }
+.nav-mobile  { display: none; }
+.nav-dropdown { display: none; }
 
-@media (max-width: 768px) {
-  .ticket-layout {
-    grid-template-columns: 1fr !important;
-  }
-  .ticket-sticky {
-    position: static !important;
-    top: auto !important;
-  }
-}
-
-/* ── Nav link hover ── */
+/* ── Nav link ── */
 .nav-link {
   font-family: var(--font-mono);
   font-size: 11px;
@@ -146,7 +124,7 @@ body::after {
   border-color: var(--accent-green);
 }
 
-/* ── Back link hover ── */
+/* ── Back link ── */
 .back-link {
   display: inline-flex;
   align-items: center;
@@ -161,7 +139,7 @@ body::after {
 }
 .back-link:hover { color: var(--text-secondary); }
 
-/* ── League tab hover ── */
+/* ── League tab ── */
 .league-tab {
   font-family: var(--font-mono);
   font-size: 11px;
@@ -174,6 +152,7 @@ body::after {
   color: var(--text-secondary);
   cursor: pointer;
   transition: all 0.15s ease;
+  white-space: nowrap;
 }
 .league-tab:hover {
   border-color: var(--border-bright);
@@ -185,7 +164,7 @@ body::after {
   color: #06060e;
 }
 
-/* ── Match card hover ── */
+/* ── Match card ── */
 .match-card {
   background: var(--bg-surface);
   border: 1px solid var(--border);
@@ -201,9 +180,7 @@ body::after {
   box-shadow: 0 0 24px rgba(0, 255, 136, 0.06), 0 8px 32px rgba(0, 0, 0, 0.4);
   transform: translateY(-2px);
 }
-.match-card:hover .card-analyze-hint {
-  color: var(--accent-green);
-}
+.match-card:hover .card-analyze-hint { color: var(--accent-green); }
 
 /* ── Analyze button ── */
 .analyze-btn {
@@ -264,12 +241,8 @@ body::after {
   background: var(--bg-surface);
   border: 1px solid var(--border);
   border-radius: 3px;
-  padding: 12px 16px;
   cursor: pointer;
   transition: all 0.15s ease;
-  display: flex;
-  align-items: center;
-  gap: 14px;
 }
 .selectable-match:hover {
   border-color: var(--border-bright);
@@ -278,4 +251,123 @@ body::after {
 .selectable-match.selected {
   background: rgba(0, 255, 136, 0.05);
   border-color: rgba(0, 255, 136, 0.35);
+}
+
+/* ── SmartTicket layout ── */
+.ticket-layout {
+  display: grid;
+  grid-template-columns: 1fr 380px;
+  gap: 24px;
+  align-items: start;
+}
+
+/* ══════════════════════════════════════════
+   THÈME CLAIR
+══════════════════════════════════════════ */
+[data-theme="light"] {
+  --bg-deep:     #f0f2f8;
+  --bg-surface:  #ffffff;
+  --bg-elevated: #e8eaf4;
+  --border:        #d0d4e8;
+  --border-bright: #b0b6d0;
+  --text-primary:   #0d0f2a;
+  --text-secondary: #3a3d5c;
+  --text-muted:     #7a7e9a;
+  --accent-green:   #00b860;
+  --accent-green-d: rgba(0, 184, 96, 0.10);
+  --accent-cyan:    #0088cc;
+  --accent-amber:   #cc9900;
+  --accent-red:     #dd2233;
+}
+[data-theme="light"] html, body {
+  background-image:
+    radial-gradient(ellipse 90% 50% at 50% 0%, rgba(0, 184, 96, 0.04) 0%, transparent 65%),
+    radial-gradient(circle, rgba(0,0,0,0.04) 1px, transparent 1px);
+  background-size: auto, 28px 28px;
+}
+[data-theme="light"] body::after { display: none; }
+[data-theme="light"] .nav-link.active,
+[data-theme="light"] .league-tab.active { color: #ffffff; }
+[data-theme="light"] .generate-btn.ready:hover,
+[data-theme="light"] .analyze-btn:hover:not(:disabled) { color: #ffffff; }
+
+/* ══════════════════════════════════════════
+   RESPONSIVE — TABLETTE (≤ 768px)
+══════════════════════════════════════════ */
+@media (max-width: 768px) {
+  /* SmartTicket : panneau passe en dessous */
+  .ticket-layout { grid-template-columns: 1fr; }
+  .ticket-sticky { position: static !important; top: auto !important; }
+
+  /* MatchDetail : 2 colonnes → 1 */
+  .match-detail-layout { grid-template-columns: 1fr !important; }
+
+  /* Filtres ligues : scroll horizontal */
+  .league-filters {
+    display: flex;
+    flex-wrap: nowrap !important;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding-bottom: 4px;
+    gap: 6px;
+  }
+  .league-filters::-webkit-scrollbar { display: none; }
+
+  /* Onglets dashboard : scroll horizontal */
+  .tabs-row {
+    display: flex;
+    flex-wrap: nowrap !important;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding-bottom: 4px;
+  }
+  .tabs-row::-webkit-scrollbar { display: none; }
+
+  /* Grille matchs : 1 colonne */
+  .matches-grid { grid-template-columns: 1fr !important; }
+}
+
+/* ══════════════════════════════════════════
+   RESPONSIVE — MOBILE (≤ 640px)
+══════════════════════════════════════════ */
+@media (max-width: 640px) {
+  /* Padding pages */
+  .page-container { padding: 20px 14px !important; }
+
+  /* Navbar : hamburger visible, liens cachés */
+  .nav-desktop { display: none !important; }
+  .nav-mobile  { display: flex !important; }
+
+  /* Menu déroulant mobile */
+  .nav-dropdown {
+    display: flex !important;
+    flex-direction: column;
+    animation: slideDown 0.2s ease-out both;
+  }
+
+  /* MatchHeader : grille 3 cols → colonne */
+  .match-header-teams {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 16px !important;
+  }
+  /* Score/VS en premier */
+  .match-header-score { order: -1; text-align: center; }
+  /* Équipe extérieure : alignement gauche */
+  .match-header-away { justify-content: flex-start !important; }
+  .match-away-text   { text-align: left !important; }
+
+  /* Logos équipes : taille réduite */
+  .match-header-logo-lg { width: 36px !important; height: 36px !important; }
+
+  /* Comparaison : label central moins large */
+  .stat-comparison-label { min-width: 60px !important; font-size: 7px !important; }
+
+  /* FormCard / Last5Card : 2 cols → 1 col */
+  .two-col-stats { grid-template-columns: 1fr !important; }
+
+  /* Noms équipes SmartTicket */
+  .match-team-name { font-size: 13px !important; }
 }
