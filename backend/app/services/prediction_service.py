@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 # backend/app/services/prediction_service.py
 #   → backend/app/services/ → backend/app/ → backend/ → project root
 _ML_PATH = Path(__file__).resolve().parent.parent.parent.parent / "ml"
+_MODEL_VERSION = "poisson_dixon_coles_v1"
 
 # Singleton state
 _model: "PoissonModel | None" = None
@@ -98,6 +99,14 @@ def get_model(db: Session) -> "PoissonModel":
     return _model
 
 
+def invalidate_model() -> None:
+    """Force le ré-entraînement du modèle lors de la prochaine requête."""
+    global _model
+    with _model_lock:
+        _model = None
+    logger.info("Cache modèle invalidé — ré-entraînement au prochain appel.")
+
+
 class PredictionService:
     """High-level service that generates, persists, and caches predictions."""
 
@@ -159,7 +168,7 @@ class PredictionService:
 
         pred = Prediction(
             match_id=match_id,
-            model_version="poisson_v1",
+            model_version=_MODEL_VERSION,
             confidence_score=confidence,
             **db_row_data,
         )

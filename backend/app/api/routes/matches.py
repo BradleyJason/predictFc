@@ -15,13 +15,15 @@ router = APIRouter(tags=["matches"])
 
 @router.get("/matches", response_model=MatchListOut)
 def list_matches(
-    competition_id: Optional[int] = None,
-    status: Optional[str] = None,
-    date_from: Optional[date] = None,
-    date_to: Optional[date] = None,
-    matchday: Optional[int] = None,
-    skip: int = 0,
-    limit: int = 20,
+    from fastapi import APIRouter, Depends, HTTPException, Query
+
+    competition_id: Optional[int] = Query(None, description="Filtrer par compétition"),
+    status: Optional[str] = Query(None, description="SCHEDULED | IN_PLAY | FINISHED"),
+    date_from: Optional[date] = Query(None, description="Date de début (YYYY-MM-DD)"),
+    date_to: Optional[date] = Query(None, description="Date de fin (YYYY-MM-DD)"),
+    matchday: Optional[int] = Query(None, description="Numéro de journée"),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=200),
     db: Session = Depends(get_db),
 ) -> MatchListOut:
     """Return a paginated list of matches with optional filters.

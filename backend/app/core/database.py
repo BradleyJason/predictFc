@@ -1,5 +1,6 @@
-"""SQLAlchemy engine, session factory and FastAPI dependency."""
-from typing import Generator
+"""SQLAlchemy engine, session factory, and declarative base."""
+
+from collections.abc import Generator
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
@@ -8,22 +9,28 @@ from app.core.config import settings
 
 
 class Base(DeclarativeBase):
-    """Common declarative base for all ORM models."""
+    """Base class for all SQLAlchemy ORM models."""
+
     pass
 
 
 engine = create_engine(
     settings.database_url,
-    pool_pre_ping=True,   # reconnect automatically on stale connections
+    # Pool adapté à Supabase (connexions poolées via PgBouncer)
+    pool_pre_ping=True,
     pool_size=5,
     max_overflow=10,
 )
 
-SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
+SessionLocal = sessionmaker(
+    bind=engine,
+    autocommit=False,
+    autoflush=False,
+)
 
 
 def get_db() -> Generator[Session, None, None]:
-    """FastAPI dependency that yields a DB session and closes it after the request."""
+    """Dependency FastAPI — fournit une session BDD par requête."""
     db = SessionLocal()
     try:
         yield db

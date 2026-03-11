@@ -1,31 +1,31 @@
-"""ORM model for the `competitions` table."""
-from datetime import datetime
-from typing import TYPE_CHECKING
+"""SQLAlchemy model for competitions table."""
 
-from sqlalchemy import DateTime, String
+from datetime import datetime
+
+from sqlalchemy import DateTime, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
 
-if TYPE_CHECKING:
-    from app.models.match import Match
-    from app.models.team import Team
-
 
 class Competition(Base):
-    """Football competition (league or cup), e.g. Ligue 1, Premier League."""
+    """Représente une compétition (PL, FL1, CL...)."""
 
     __tablename__ = "competitions"
 
-    id: Mapped[int] = mapped_column(primary_key=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
     code: Mapped[str] = mapped_column(String(10), unique=True, nullable=False)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     country: Mapped[str | None] = mapped_column(String(50))
-    season: Mapped[str | None] = mapped_column(String(10))
+    season: Mapped[str | None] = mapped_column(String(10))  # ex: "2024-25"
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, nullable=False
+        DateTime(timezone=True), server_default=func.now()
     )
 
-    # Relationships
-    teams: Mapped[list["Team"]] = relationship("Team", back_populates="competition")
-    matches: Mapped[list["Match"]] = relationship("Match", back_populates="competition")
+    # Relations
+    teams: Mapped[list["Team"]] = relationship("Team", back_populates="competition")  # noqa: F821
+    matches: Mapped[list["Match"]] = relationship("Match", back_populates="competition")  # noqa: F821
+
+    def __repr__(self) -> str:
+        """Représentation lisible du modèle."""
+        return f"<Competition {self.code} ({self.season})>"

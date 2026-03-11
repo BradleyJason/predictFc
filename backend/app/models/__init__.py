@@ -1,4 +1,5 @@
-"""Re-export all ORM models so Alembic and other modules can import from one place."""
+"""SQLAlchemy ORM models — imports centralisés pour Alembic."""
+
 from app.models.competition import Competition
 from app.models.match import Match
 from app.models.player import Player
@@ -9,10 +10,10 @@ from app.models.team import Team
 
 __all__ = [
     "Competition",
-    "Team",
-    "Player",
     "Match",
+    "Player",
     "PlayerStat",
     "Prediction",
     "SmartTicket",
+    "Team",
 ]

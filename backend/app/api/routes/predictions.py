@@ -1,11 +1,10 @@
 """Routes for match predictions."""
-import app.services.prediction_service as _ps_module
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.schemas.prediction import DISCLAIMER, PredictionOut, TopScore
-from app.services.prediction_service import prediction_service
+from app.services.prediction_service import invalidate_model, prediction_service
 
 router = APIRouter(tags=["predictions"])
 
@@ -13,7 +12,7 @@ router = APIRouter(tags=["predictions"])
 @router.get("/predictions/{match_id}", response_model=PredictionOut)
 def get_prediction(
     match_id: int,
-    force_refresh: bool = False,
+    force_refresh: bool = Query(False, description="Force la régénération même si déjà en BDD"),
     db: Session = Depends(get_db),
 ) -> PredictionOut:
     """Return a prediction for the given match, computing it if necessary.
@@ -86,10 +85,4 @@ def invalidate_model() -> dict:
     The next prediction request will retrain the model from DB data.
     Useful after ingesting new match results.
     """
-    _ps_module._model = None
-    return {
-        "message": (
-            "Modèle réinitialisé. "
-            "Il sera réentraîné automatiquement à la prochaine prédiction."
-        )
-    }
+    return {"message": "Modèle réinitialisé. Il sera réentraîné automatiquement à la prochaine prédiction."}

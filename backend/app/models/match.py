@@ -1,55 +1,50 @@
-"""ORM model for the `matches` table."""
-from datetime import datetime
-from typing import TYPE_CHECKING
+"""SQLAlchemy model for matches table."""
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String
+from datetime import datetime
+
+from sqlalchemy import DateTime, ForeignKey, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
 
-if TYPE_CHECKING:
-    from app.models.competition import Competition
-    from app.models.player_stat import PlayerStat
-    from app.models.prediction import Prediction
-    from app.models.team import Team
-
 
 class Match(Base):
-    """A football match between two teams."""
+    """Représente un match de football."""
 
     __tablename__ = "matches"
 
-    id: Mapped[int] = mapped_column(primary_key=True)
-    external_id: Mapped[int | None] = mapped_column(Integer, unique=True)
-    competition_id: Mapped[int | None] = mapped_column(ForeignKey("competitions.id"))
-    home_team_id: Mapped[int | None] = mapped_column(ForeignKey("teams.id"))
-    away_team_id: Mapped[int | None] = mapped_column(ForeignKey("teams.id"))
-    match_date: Mapped[datetime] = mapped_column(DateTime, nullable=False)
-    status: Mapped[str | None] = mapped_column(String(20))
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    external_id: Mapped[int | None] = mapped_column(Integer, unique=True)  # ID football-data.org
+    competition_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("competitions.id")
+    )
+    home_team_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("teams.id"))
+    away_team_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("teams.id"))
+    match_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    status: Mapped[str | None] = mapped_column(String(20))  # SCHEDULED, FINISHED, LIVE
     home_score: Mapped[int | None] = mapped_column(Integer)
     away_score: Mapped[int | None] = mapped_column(Integer)
     matchday: Mapped[int | None] = mapped_column(Integer)
-    stage: Mapped[str | None] = mapped_column(String(50))
+    stage: Mapped[str | None] = mapped_column(String(50))  # REGULAR_SEASON, QUARTER_FINAL...
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, nullable=False
+        DateTime(timezone=True), server_default=func.now()
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
 
-    # Relationships
-    competition: Mapped["Competition | None"] = relationship(
-        "Competition", back_populates="matches"
-    )
-    home_team: Mapped["Team | None"] = relationship(
+    # Relations
+    competition: Mapped["Competition"] = relationship("Competition", back_populates="matches")  # noqa: F821
+    home_team: Mapped["Team"] = relationship(  # noqa: F821
         "Team", foreign_keys=[home_team_id], back_populates="home_matches"
     )
-    away_team: Mapped["Team | None"] = relationship(
+    away_team: Mapped["Team"] = relationship(  # noqa: F821
         "Team", foreign_keys=[away_team_id], back_populates="away_matches"
     )
-    predictions: Mapped[list["Prediction"]] = relationship(
-        "Prediction", back_populates="match"
-    )
-    player_stats: Mapped[list["PlayerStat"]] = relationship(
-        "PlayerStat", back_populates="match"
-    )
+    predictions: Mapped[list["Prediction"]] = relationship("Prediction", back_populates="match")  # noqa: F821
+    player_stats: Mapped[list["PlayerStat"]] = relationship("PlayerStat", back_populates="match")  # noqa: F821
+    smart_tickets: Mapped[list["SmartTicket"]] = relationship("SmartTicket", back_populates="match")  # noqa: F821
+
+    def __repr__(self) -> str:
+        """Représentation lisible du modèle."""
+        return f"<Match {self.home_team_id} vs {self.away_team_id} ({self.match_date})>"

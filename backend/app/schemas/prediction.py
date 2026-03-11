@@ -1,4 +1,5 @@
 """Pydantic schemas for prediction-related API responses."""
+from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel
@@ -56,6 +57,7 @@ class PredictionOut(BaseModel):
 
     # Metadata
     confidence_score: Optional[int] = None
+    created_at: Optional[datetime] = None
     top_scores: list[TopScore] = []
     disclaimer: str = DISCLAIMER
 

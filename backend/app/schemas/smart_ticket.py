@@ -1,36 +1,26 @@
 """Pydantic schemas for the Smart Ticket endpoint."""
-from typing import Optional
-
-from pydantic import BaseModel, field_validator
-
-DISCLAIMER = (
-    "Ces prédictions sont basées sur des modèles statistiques. "
-    "Aucune prédiction n'est garantie. Jouez responsablement "
-    "et uniquement sur des plateformes agréées ANJ."
-)
+from typing import Literal, Optional
+from pydantic import BaseModel, Field, field_validator
+from app.schemas.prediction import DISCLAIMER
 
 
 class SmartTicketRequest(BaseModel):
     """Input body for POST /smart-ticket."""
-
-    match_ids: list[int]
-    mode: str = "combined"
+    match_ids: list[int] = Field(..., min_length=1, max_length=5)
+    mode: Literal["simple", "combined"] = "combined"
 
     @field_validator("match_ids")
     @classmethod
     def validate_match_ids(cls, v: list[int]) -> list[int]:
-        """Require 1–10 match IDs."""
-        if len(v) < 1:
-            raise ValueError("Au moins un match est requis.")
-        if len(v) > 10:
-            raise ValueError("Maximum 10 matchs par ticket.")
+        if len(v) != len(set(v)):
+            raise ValueError("match_ids ne doit pas contenir de doublons.")
         return v
 
 
 class SelectionItem(BaseModel):
     """One selected bet within a smart ticket."""
-
     match_id: int
+    prediction_id: Optional[int] = None
     bet_type: str
     label: str
     probability: float
@@ -38,10 +28,12 @@ class SelectionItem(BaseModel):
 
 class SmartTicketOut(BaseModel):
     """Generated smart ticket returned by the API."""
-
+    id: Optional[int] = None
+    match_id: Optional[int] = None
+    prediction_id: Optional[int] = None
     selections: list[SelectionItem]
-    combined_proba: float
-    confidence_score: int
+    combined_proba: Optional[float] = None
+    confidence_score: Optional[int] = None
     mode: str
     correlated_warning: Optional[str] = None
-    disclaimer: str = DISCLAIMER
+    disclaimer: str = Field(default=DISCLAIMER)

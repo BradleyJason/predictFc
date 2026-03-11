@@ -16,6 +16,10 @@ mlflow = "<3"
 dagshub = "^0.6.8"
 dvc = "^3.66.1"
 python-dotenv = "^1.2.2"
+sqlalchemy = "^2.0"
+psycopg2-binary = "^2.9"
+httpx = "^0.28"
+pyarrow = "^20.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^9.0.2"
