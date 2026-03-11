@@ -180,7 +180,7 @@ class PoissonModel:
             args=(n, home_idx, away_idx, home_scores, away_scores),
             method="L-BFGS-B",
             bounds=bounds,
-            options={"maxiter": 2000, "ftol": 1e-9, "gtol": 1e-6},
+            options={"maxfun": 100000, "maxiter": 1000, "ftol": 1e-9, "gtol": 1e-6},
         )
 
         if not result.success:

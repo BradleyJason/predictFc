@@ -10,12 +10,12 @@ Toutes les probabilités se déduisent mathématiquement de P(i,j).
 
 import numpy as np
 
-from ml.engine.predictions.btts import predict_btts
-from ml.engine.predictions.double_chance import predict_double_chance
-from ml.engine.predictions.exact_score import predict_exact_score
-from ml.engine.predictions.goal_gap import predict_goal_gap
-from ml.engine.predictions.result import predict_result
-from ml.engine.predictions.total_goals import predict_total_goals
+from engine.predictions.btts import predict_btts
+from engine.predictions.double_chance import predict_double_chance
+from engine.predictions.exact_score import predict_exact_score
+from engine.predictions.goal_gap import predict_goal_gap
+from engine.predictions.result import predict_result
+from engine.predictions.total_goals import predict_total_goals
 
 
 def score_matrix_to_predictions(matrix: np.ndarray) -> dict:

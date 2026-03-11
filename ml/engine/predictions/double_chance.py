@@ -10,7 +10,7 @@ Ces probabilités se déduisent directement des probabilités 1X2.
 
 import numpy as np
 
-from ml.engine.predictions.result import predict_result
+from engine.predictions.result import predict_result
 
 
 def predict_double_chance(matrix: np.ndarray) -> dict:
