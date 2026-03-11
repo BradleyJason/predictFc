@@ -19,12 +19,12 @@ export default function MatchDetail() {
   const [match,      setMatch]      = useState(null)
   const [matchErr,   setMatchErr]   = useState(null)
   const [matchLoad,  setMatchLoad]  = useState(true)
-  const [stats,      setStats]      = useState(null)
-  const [statsLoad,  setStatsLoad]  = useState(true)
   const [prediction, setPrediction] = useState(null)
   const [predLoad,   setPredLoad]   = useState(false)
   const [predErr,    setPredErr]    = useState(null)
   const [analyzed,   setAnalyzed]   = useState(false)
+  const [stats,      setStats]      = useState(null)
+  const [statsLoad,  setStatsLoad]  = useState(true)
 
   useEffect(() => {
     getMatch(id)
@@ -54,7 +54,7 @@ export default function MatchDetail() {
       <MatchHeader match={match} />
 
       {isFinished ? (
-        <FinishedMatchView stats={stats} statsLoad={statsLoad} />
+        <FinishedMatchView match={match} />
       ) : (
         <UpcomingMatchView
           stats={stats} statsLoad={statsLoad}
@@ -69,133 +69,178 @@ export default function MatchDetail() {
 
 /* ══════════════════════════════════════════
    VUE MATCH TERMINÉ
-   Affiche uniquement les stats de la rencontre :
-   résultat, forme des équipes, H2H, derniers matchs
+   Affiche UNIQUEMENT les données de ce match :
+   score final + résultat domicile/extérieur
 ══════════════════════════════════════════ */
-function FinishedMatchView({ stats, statsLoad }) {
-  if (statsLoad) return <div style={{ marginTop: '24px' }}><MiniLoader /></div>
-  if (!stats)    return <div style={{ marginTop: '24px' }}><NoStats /></div>
+function FinishedMatchView({ match }) {
+  const homeScore = match.home_score ?? 0
+  const awayScore = match.away_score ?? 0
+  const homeWon   = homeScore > awayScore
+  const awayWon   = awayScore > homeScore
+  const isDraw    = homeScore === awayScore
 
-  const { home_stats, away_stats, h2h, match_result } = stats
+  const homeColor  = homeWon ? '#00ff88' : isDraw ? '#ffcc00' : '#ff4455'
+  const awayColor  = awayWon ? '#00ff88' : isDraw ? '#ffcc00' : '#ff4455'
+  const homeLabel  = homeWon ? '✓ VICTOIRE' : isDraw ? '= MATCH NUL' : '✗ DÉFAITE'
+  const awayLabel  = awayWon ? '✓ VICTOIRE' : isDraw ? '= MATCH NUL' : '✗ DÉFAITE'
 
   return (
-    <div style={{ marginTop: '24px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+    <div style={{ marginTop: '24px' }}>
+      <div style={{
+        background: 'var(--bg-surface)',
+        border: '1px solid var(--border)',
+        borderRadius: '4px',
+        overflow: 'hidden',
+      }}>
+        {/* Barre décorative haut */}
+        <div style={{
+          height: '3px',
+          background: `linear-gradient(90deg, ${homeColor}, var(--border) 50%, ${awayColor})`,
+        }} />
 
-      {/* ── Résumé du match ── */}
-      {match_result && (
-        <MatchSummaryCard
-          matchResult={match_result}
-          homeStats={home_stats}
-          awayStats={away_stats}
-        />
-      )}
+        <div style={{ padding: '32px 28px' }}>
 
-      {/* ── Forme récente ── */}
-      <FormCard home={home_stats} away={away_stats} includesThisMatch />
+          {/* ── Score central ── */}
+          <div style={{
+            display: 'flex', alignItems: 'center',
+            justifyContent: 'center', gap: '24px',
+            marginBottom: '32px',
+          }}>
+            {/* Domicile */}
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '8px', minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                {match.home_team?.crest_url && (
+                  <img src={match.home_team.crest_url} alt="" width={32} height={32}
+                    style={{ objectFit: 'contain', flexShrink: 0 }}
+                    onError={(e) => { e.target.style.display = 'none' }}
+                  />
+                )}
+                <span style={{
+                  fontFamily: 'var(--font-display)',
+                  fontSize: 'clamp(15px, 2.5vw, 22px)',
+                  color: 'var(--text-primary)',
+                  letterSpacing: '0.03em',
+                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                }}>
+                  {match.home_team?.name || '—'}
+                </span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{
+                  fontFamily: 'var(--font-mono)', fontSize: '10px',
+                  fontWeight: 700, letterSpacing: '0.12em',
+                  color: homeColor,
+                  padding: '3px 8px',
+                  background: `${homeColor}15`,
+                  border: `1px solid ${homeColor}44`,
+                  borderRadius: '2px',
+                }}>
+                  {homeLabel}
+                </span>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '9px', color: 'var(--text-muted)', letterSpacing: '0.1em' }}>
+                  DOMICILE
+                </span>
+              </div>
+            </div>
 
-      {/* ── H2H ── */}
-      <H2HCard h2h={h2h} homeStats={home_stats} awayStats={away_stats} />
+            {/* Score */}
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: '12px',
+              flexShrink: 0,
+            }}>
+              <span style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: 'clamp(48px, 8vw, 72px)',
+                fontWeight: 700,
+                color: homeColor,
+                lineHeight: 1,
+                textShadow: `0 0 24px ${homeColor}44`,
+              }}>
+                {homeScore}
+              </span>
+              <span style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: 'clamp(20px, 3vw, 32px)',
+                color: 'var(--text-muted)',
+              }}>
+                —
+              </span>
+              <span style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: 'clamp(48px, 8vw, 72px)',
+                fontWeight: 700,
+                color: awayColor,
+                lineHeight: 1,
+                textShadow: `0 0 24px ${awayColor}44`,
+              }}>
+                {awayScore}
+              </span>
+            </div>
 
-      {/* ── Derniers matchs (incluant ce match) ── */}
-      <Last5Card home={home_stats} away={away_stats} />
+            {/* Extérieur */}
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px', minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{
+                  fontFamily: 'var(--font-display)',
+                  fontSize: 'clamp(15px, 2.5vw, 22px)',
+                  color: 'var(--text-primary)',
+                  letterSpacing: '0.03em',
+                  textAlign: 'right',
+                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                }}>
+                  {match.away_team?.name || '—'}
+                </span>
+                {match.away_team?.crest_url && (
+                  <img src={match.away_team.crest_url} alt="" width={32} height={32}
+                    style={{ objectFit: 'contain', flexShrink: 0 }}
+                    onError={(e) => { e.target.style.display = 'none' }}
+                  />
+                )}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'flex-end' }}>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '9px', color: 'var(--text-muted)', letterSpacing: '0.1em' }}>
+                  EXTÉRIEUR
+                </span>
+                <span style={{
+                  fontFamily: 'var(--font-mono)', fontSize: '10px',
+                  fontWeight: 700, letterSpacing: '0.12em',
+                  color: awayColor,
+                  padding: '3px 8px',
+                  background: `${awayColor}15`,
+                  border: `1px solid ${awayColor}44`,
+                  borderRadius: '2px',
+                }}>
+                  {awayLabel}
+                </span>
+              </div>
+            </div>
+          </div>
 
+          {/* ── Séparateur ── */}
+          <div style={{ height: '1px', background: 'var(--border)', marginBottom: '24px' }} />
+
+          {/* ── Message enrichissement futur ── */}
+          <div style={{
+            padding: '14px 16px',
+            background: 'var(--bg-elevated)',
+            border: '1px dashed var(--border-bright)',
+            borderRadius: '3px',
+            display: 'flex', alignItems: 'center', gap: '10px',
+          }}>
+            <span style={{ color: 'var(--text-muted)', fontSize: '14px' }}>📊</span>
+            <span style={{
+              fontFamily: 'var(--font-mono)', fontSize: '9px',
+              color: 'var(--text-muted)', letterSpacing: '0.08em', lineHeight: 1.6,
+            }}>
+              STATISTIQUES DÉTAILLÉES À VENIR — Possession · Tirs · Corners · Cartons · Buteurs
+              <br />
+              <span style={{ color: 'var(--accent-green)', opacity: 0.6 }}>Phase 3 · Intégration sources enrichies</span>
+            </span>
+          </div>
+
+        </div>
+      </div>
     </div>
-  )
-}
-
-/* ── Résumé visuel du match terminé ── */
-function MatchSummaryCard({ matchResult, homeStats, awayStats }) {
-  const homeWon  = matchResult.home_score > matchResult.away_score
-  const awayWon  = matchResult.away_score > matchResult.home_score
-  const isDraw   = matchResult.home_score === matchResult.away_score
-
-  const homeColor = homeWon ? '#00ff88' : isDraw ? '#ffcc00' : '#ff4455'
-  const awayColor = awayWon ? '#00ff88' : isDraw ? '#ffcc00' : '#ff4455'
-
-  return (
-    <StatCard title="RÉSULTAT DE LA RENCONTRE">
-      {/* Score central */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '20px', padding: '12px 0 20px' }}>
-
-        {/* Équipe domicile */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '6px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            {homeStats.crest_url && (
-              <img src={homeStats.crest_url} alt="" width={28} height={28}
-                style={{ objectFit: 'contain' }}
-                onError={(e) => { e.target.style.display = 'none' }}
-              />
-            )}
-            <span style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(14px, 2.5vw, 20px)', color: 'var(--text-primary)', letterSpacing: '0.03em' }}>
-              {homeStats.team_name}
-            </span>
-          </div>
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '9px', letterSpacing: '0.14em', color: homeColor, fontWeight: 700 }}>
-            {homeWon ? '✓ VICTOIRE' : isDraw ? '= NUL' : '✗ DÉFAITE'} · DOMICILE
-          </span>
-        </div>
-
-        {/* Score */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'clamp(32px, 6vw, 52px)', fontWeight: 700, color: homeColor, textShadow: `0 0 20px ${homeColor}55` }}>
-            {matchResult.home_score}
-          </span>
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '20px', color: 'var(--text-muted)' }}>—</span>
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'clamp(32px, 6vw, 52px)', fontWeight: 700, color: awayColor, textShadow: `0 0 20px ${awayColor}55` }}>
-            {matchResult.away_score}
-          </span>
-        </div>
-
-        {/* Équipe extérieure */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(14px, 2.5vw, 20px)', color: 'var(--text-primary)', letterSpacing: '0.03em', textAlign: 'right' }}>
-              {awayStats.team_name}
-            </span>
-            {awayStats.crest_url && (
-              <img src={awayStats.crest_url} alt="" width={28} height={28}
-                style={{ objectFit: 'contain' }}
-                onError={(e) => { e.target.style.display = 'none' }}
-              />
-            )}
-          </div>
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '9px', letterSpacing: '0.14em', color: awayColor, fontWeight: 700, textAlign: 'right' }}>
-            {awayWon ? '✓ VICTOIRE' : isDraw ? '= NUL' : '✗ DÉFAITE'} · EXTÉRIEUR
-          </span>
-        </div>
-      </div>
-
-      {/* Séparateur */}
-      <div style={{ height: '1px', background: 'var(--border)', margin: '4px 0 16px' }} />
-
-      {/* Mini stats comparatives : buts marqués / encaissés sur 10 matchs */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-        {[
-          { stats: homeStats, label: 'DOMICILE' },
-          { stats: awayStats, label: 'EXTÉRIEUR' },
-        ].map(({ stats, label }) => (
-          <div key={stats.team_id} style={{ background: 'var(--bg-elevated)', borderRadius: '4px', padding: '12px 14px' }}>
-            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '8px', color: 'var(--text-muted)', letterSpacing: '0.12em', marginBottom: '10px' }}>
-              {label} · {stats.played} MATCHS RÉCENTS
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              {[
-                { label: 'Victoires',      value: stats.wins,             color: '#00ff88' },
-                { label: 'Nuls',           value: stats.draws,            color: '#ffcc00' },
-                { label: 'Défaites',       value: stats.losses,           color: '#ff4455' },
-                { label: 'Buts marqués',   value: stats.goals_scored,     color: 'var(--accent-cyan)' },
-                { label: 'Buts encaissés', value: stats.goals_conceded,   color: 'var(--text-secondary)' },
-              ].map(({ label, value, color }) => (
-                <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '9px', color: 'var(--text-muted)' }}>{label}</span>
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '13px', fontWeight: 700, color }}>{value}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-    </StatCard>
   )
 }
 
@@ -209,28 +254,20 @@ function UpcomingMatchView({ stats, statsLoad, prediction, predLoad, predErr, an
       style={{
         display: 'grid',
         gridTemplateColumns: analyzed ? '1fr 1fr' : '1fr auto',
-        gap: '20px',
-        marginTop: '24px',
-        alignItems: 'start',
+        gap: '20px', marginTop: '24px', alignItems: 'start',
       }}
     >
-      {/* Colonne gauche : Stats */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-        {statsLoad ? (
-          <MiniLoader />
-        ) : stats ? (
+        {statsLoad ? <MiniLoader /> : stats ? (
           <>
             <TeamComparisonCard home={stats.home_stats} away={stats.away_stats} />
             <FormCard home={stats.home_stats} away={stats.away_stats} />
             <H2HCard h2h={stats.h2h} homeStats={stats.home_stats} awayStats={stats.away_stats} />
             <Last5Card home={stats.home_stats} away={stats.away_stats} />
           </>
-        ) : (
-          <NoStats />
-        )}
+        ) : <NoStats />}
       </div>
 
-      {/* Colonne droite : Analyse */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
         {!analyzed ? (
           <div>
@@ -248,9 +285,7 @@ function UpcomingMatchView({ stats, statsLoad, prediction, predLoad, predErr, an
                   border: '1px solid var(--border)', borderRadius: '3px',
                   padding: '6px 14px', cursor: 'pointer',
                 }}
-              >
-                ↺ RAFRAÎCHIR
-              </button>
+              >↺ RAFRAÎCHIR</button>
             </div>
             {prediction && <PredictionSections prediction={prediction} />}
           </>
@@ -262,9 +297,6 @@ function UpcomingMatchView({ stats, statsLoad, prediction, predLoad, predErr, an
 
 /* ── Match Header ── */
 function MatchHeader({ match }) {
-  const home = match.home_team?.name || '—'
-  const away = match.away_team?.name || '—'
-
   return (
     <div style={{
       background: 'var(--bg-surface)', border: '1px solid var(--border)',
@@ -273,50 +305,38 @@ function MatchHeader({ match }) {
     }}>
       <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '2px', background: 'linear-gradient(90deg, transparent, var(--accent-cyan) 40%, var(--accent-green) 60%, transparent)' }} />
 
-      {/* Compétition */}
       <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '24px' }}>
         {match.competition?.crest_url && (
           <img src={match.competition.crest_url} alt="" width={20} height={20}
-            style={{ objectFit: 'contain' }}
-            onError={(e) => { e.target.style.display = 'none' }}
-          />
+            style={{ objectFit: 'contain' }} onError={(e) => { e.target.style.display = 'none' }} />
         )}
         <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-muted)', letterSpacing: '0.06em' }}>
           {match.competition?.name}{match.matchday ? ` · JOURNÉE ${match.matchday}` : ''}
         </span>
-        {/* Badge TERMINÉ */}
         {match.status === 'FINISHED' && (
           <span style={{
             fontFamily: 'var(--font-mono)', fontSize: '8px', letterSpacing: '0.14em',
             padding: '3px 8px', borderRadius: '2px',
             background: 'rgba(0,255,136,0.1)', border: '1px solid rgba(0,255,136,0.3)',
             color: 'var(--accent-green)',
-          }}>
-            TERMINÉ
-          </span>
+          }}>TERMINÉ</span>
         )}
       </div>
 
-      {/* Équipes */}
-      <div
-        className="match-header-teams"
-        style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', gap: '20px', marginBottom: '20px' }}
-      >
-        {/* Domicile */}
+      <div className="match-header-teams" style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', gap: '20px', marginBottom: '20px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           {match.home_team?.crest_url && (
             <img className="match-header-logo-lg" src={match.home_team.crest_url} alt="" width={48} height={48}
-              style={{ objectFit: 'contain' }}
-              onError={(e) => { e.target.style.display = 'none' }}
-            />
+              style={{ objectFit: 'contain' }} onError={(e) => { e.target.style.display = 'none' }} />
           )}
           <div>
-            <div style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(18px, 3vw, 36px)', letterSpacing: '0.03em', color: 'var(--text-primary)', lineHeight: 1, marginBottom: '4px' }}>{home}</div>
+            <div style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(18px, 3vw, 36px)', letterSpacing: '0.03em', color: 'var(--text-primary)', lineHeight: 1, marginBottom: '4px' }}>
+              {match.home_team?.name || '—'}
+            </div>
             <div style={{ fontFamily: 'var(--font-mono)', fontSize: '9px', letterSpacing: '0.16em', color: 'var(--text-muted)' }}>DOMICILE</div>
           </div>
         </div>
 
-        {/* Score / VS */}
         <div className="match-header-score" style={{ textAlign: 'center' }}>
           {match.status === 'FINISHED' && match.home_score != null ? (
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: '36px', fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '0.04em' }}>
@@ -327,17 +347,16 @@ function MatchHeader({ match }) {
           )}
         </div>
 
-        {/* Extérieur */}
         <div className="match-header-away" style={{ display: 'flex', alignItems: 'center', gap: '12px', justifyContent: 'flex-end' }}>
           <div className="match-away-text" style={{ textAlign: 'right' }}>
-            <div style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(18px, 3vw, 36px)', letterSpacing: '0.03em', color: 'var(--text-primary)', lineHeight: 1, marginBottom: '4px' }}>{away}</div>
+            <div style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(18px, 3vw, 36px)', letterSpacing: '0.03em', color: 'var(--text-primary)', lineHeight: 1, marginBottom: '4px' }}>
+              {match.away_team?.name || '—'}
+            </div>
             <div style={{ fontFamily: 'var(--font-mono)', fontSize: '9px', letterSpacing: '0.16em', color: 'var(--text-muted)' }}>EXTÉRIEUR</div>
           </div>
           {match.away_team?.crest_url && (
             <img className="match-header-logo-lg" src={match.away_team.crest_url} alt="" width={48} height={48}
-              style={{ objectFit: 'contain' }}
-              onError={(e) => { e.target.style.display = 'none' }}
-            />
+              style={{ objectFit: 'contain' }} onError={(e) => { e.target.style.display = 'none' }} />
           )}
         </div>
       </div>
@@ -349,7 +368,7 @@ function MatchHeader({ match }) {
   )
 }
 
-/* ── Comparaison stats globales (matchs à venir uniquement) ── */
+/* ── Stats comparaison ── */
 function TeamComparisonCard({ home, away }) {
   const rows = [
     { label: 'Victoires',       h: home.wins,             a: away.wins,             max: Math.max(home.played, away.played) },
@@ -359,41 +378,40 @@ function TeamComparisonCard({ home, away }) {
     { label: 'Clean sheets',    h: home.clean_sheets,     a: away.clean_sheets,     max: Math.max(home.clean_sheets, away.clean_sheets) || 1 },
     { label: '% victoires',     h: home.win_pct,          a: away.win_pct,          max: 100, suffix: '%' },
   ]
-
   return (
     <StatCard title="COMPARAISON — 10 DERNIERS MATCHS">
       <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: '8px', marginBottom: '16px', alignItems: 'center' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           {home.crest_url && <img src={home.crest_url} alt="" width={22} height={22} style={{ objectFit: 'contain' }} onError={(e) => { e.target.style.display = 'none' }} />}
-          <span style={{ fontFamily: 'var(--font-display)', fontSize: '13px', color: 'var(--accent-cyan)', letterSpacing: '0.03em' }}>{home.team_name}</span>
+          <span style={{ fontFamily: 'var(--font-display)', fontSize: '13px', color: 'var(--accent-cyan)' }}>{home.team_name}</span>
         </div>
-        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '8px', color: 'var(--text-muted)', letterSpacing: '0.1em', textAlign: 'center' }}>VS</span>
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '8px', color: 'var(--text-muted)', textAlign: 'center' }}>VS</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'flex-end' }}>
-          <span style={{ fontFamily: 'var(--font-display)', fontSize: '13px', color: '#ff6b35', letterSpacing: '0.03em', textAlign: 'right' }}>{away.team_name}</span>
+          <span style={{ fontFamily: 'var(--font-display)', fontSize: '13px', color: '#ff6b35', textAlign: 'right' }}>{away.team_name}</span>
           {away.crest_url && <img src={away.crest_url} alt="" width={22} height={22} style={{ objectFit: 'contain' }} onError={(e) => { e.target.style.display = 'none' }} />}
         </div>
       </div>
       {rows.map(({ label, h, a, max, dec, suffix, inverse }) => {
-        const hVal   = dec ? h.toFixed(dec) : h
-        const aVal   = dec ? a.toFixed(dec) : a
-        const hPct   = Math.min((h / max) * 100, 100)
-        const aPct   = Math.min((a / max) * 100, 100)
+        const hVal = dec ? h.toFixed(dec) : h
+        const aVal = dec ? a.toFixed(dec) : a
+        const hPct = Math.min((h / max) * 100, 100)
+        const aPct = Math.min((a / max) * 100, 100)
         const hColor = inverse ? (h <= a ? '#00ff88' : '#ff4455') : (h >= a ? '#00ff88' : '#ff4455')
         const aColor = inverse ? (a <= h ? '#00ff88' : '#ff4455') : (a >= h ? '#00ff88' : '#ff4455')
         return (
           <div key={label} style={{ marginBottom: '12px' }}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: '8px', alignItems: 'center', marginBottom: '4px' }}>
               <span style={{ fontFamily: 'var(--font-mono)', fontSize: '13px', fontWeight: 700, color: hColor }}>{hVal}{suffix || ''}</span>
-              <span className="stat-comparison-label" style={{ fontFamily: 'var(--font-mono)', fontSize: '8px', color: 'var(--text-muted)', letterSpacing: '0.08em', textAlign: 'center', minWidth: '80px' }}>{label}</span>
+              <span className="stat-comparison-label" style={{ fontFamily: 'var(--font-mono)', fontSize: '8px', color: 'var(--text-muted)', textAlign: 'center', minWidth: '80px' }}>{label}</span>
               <span style={{ fontFamily: 'var(--font-mono)', fontSize: '13px', fontWeight: 700, color: aColor, textAlign: 'right' }}>{aVal}{suffix || ''}</span>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 4px 1fr', gap: '3px', alignItems: 'center' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 4px 1fr', gap: '3px' }}>
               <div style={{ height: '3px', background: 'var(--border)', borderRadius: '2px', overflow: 'hidden', display: 'flex', justifyContent: 'flex-end' }}>
-                <div style={{ height: '100%', width: `${hPct}%`, background: hColor, borderRadius: '2px', boxShadow: `0 0 6px ${hColor}66` }} />
+                <div style={{ height: '100%', width: `${hPct}%`, background: hColor, borderRadius: '2px' }} />
               </div>
               <div />
               <div style={{ height: '3px', background: 'var(--border)', borderRadius: '2px', overflow: 'hidden' }}>
-                <div style={{ height: '100%', width: `${aPct}%`, background: aColor, borderRadius: '2px', boxShadow: `0 0 6px ${aColor}66` }} />
+                <div style={{ height: '100%', width: `${aPct}%`, background: aColor, borderRadius: '2px' }} />
               </div>
             </div>
           </div>
@@ -403,33 +421,22 @@ function TeamComparisonCard({ home, away }) {
   )
 }
 
-/* ── Forme récente ── */
-function FormCard({ home, away, includesThisMatch = false }) {
+function FormCard({ home, away }) {
   return (
-    <StatCard title={`FORME RÉCENTE — 5 DERNIERS MATCHS${includesThisMatch ? ' (CE MATCH INCLUS)' : ''}`}>
+    <StatCard title="FORME RÉCENTE — 5 DERNIERS MATCHS">
       <div className="two-col-stats" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-        {[{ stats: home }, { stats: away }].map(({ stats }, idx) => (
+        {[home, away].map((stats, idx) => (
           <div key={idx}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
               {stats.crest_url && <img src={stats.crest_url} alt="" width={16} height={16} style={{ objectFit: 'contain' }} onError={(e) => { e.target.style.display = 'none' }} />}
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '9px', color: 'var(--text-muted)', letterSpacing: '0.08em' }}>{stats.team_name}</span>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '9px', color: 'var(--text-muted)' }}>{stats.team_name}</span>
             </div>
             <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
               {stats.form_5.map((r, i) => (
-                <div key={i} style={{
-                  width: '32px', height: '32px', borderRadius: '3px',
-                  background: `${RESULT_COLOR[r]}22`,
-                  border: `1px solid ${RESULT_COLOR[r]}`,
-                  // Le premier élément (index 0 = le plus récent) est ce match
-                  boxShadow: includesThisMatch && i === 0 ? `0 0 10px ${RESULT_COLOR[r]}88` : 'none',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}>
+                <div key={i} style={{ width: '32px', height: '32px', borderRadius: '3px', background: `${RESULT_COLOR[r]}22`, border: `1px solid ${RESULT_COLOR[r]}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', fontWeight: 700, color: RESULT_COLOR[r] }}>{r}</span>
                 </div>
               ))}
-              {stats.form_5.length === 0 && (
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', color: 'var(--text-muted)' }}>—</span>
-              )}
             </div>
           </div>
         ))}
@@ -438,16 +445,14 @@ function FormCard({ home, away, includesThisMatch = false }) {
   )
 }
 
-/* ── H2H ── */
 function H2HCard({ h2h, homeStats, awayStats }) {
   if (h2h.total_played === 0) return (
     <StatCard title="CONFRONTATIONS DIRECTES">
       <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-muted)' }}>Aucune confrontation directe en BDD.</span>
     </StatCard>
   )
-  const total = h2h.total_played
   return (
-    <StatCard title={`H2H — ${total} CONFRONTATIONS`}>
+    <StatCard title={`H2H — ${h2h.total_played} CONFRONTATIONS`}>
       <div style={{ marginBottom: '16px' }}>
         <div style={{ display: 'flex', height: '8px', borderRadius: '4px', overflow: 'hidden', gap: '2px', marginBottom: '8px' }}>
           <div style={{ flex: h2h.home_wins, background: '#00ff88', minWidth: h2h.home_wins ? '4px' : 0 }} />
@@ -455,18 +460,15 @@ function H2HCard({ h2h, homeStats, awayStats }) {
           <div style={{ flex: h2h.away_wins, background: '#ff6b35', minWidth: h2h.away_wins ? '4px' : 0 }} />
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', textAlign: 'center' }}>
-          <div>
-            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '18px', fontWeight: 700, color: '#00ff88' }}>{h2h.home_wins}</div>
-            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '8px', color: 'var(--text-muted)', letterSpacing: '0.08em' }}>{homeStats.team_name}</div>
-          </div>
-          <div>
-            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '18px', fontWeight: 700, color: '#ffcc00' }}>{h2h.draws}</div>
-            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '8px', color: 'var(--text-muted)', letterSpacing: '0.08em' }}>NULS</div>
-          </div>
-          <div>
-            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '18px', fontWeight: 700, color: '#ff6b35' }}>{h2h.away_wins}</div>
-            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '8px', color: 'var(--text-muted)', letterSpacing: '0.08em' }}>{awayStats.team_name}</div>
-          </div>
+          {[{ val: h2h.home_wins, label: homeStats.team_name, color: '#00ff88' },
+            { val: h2h.draws,     label: 'NULS',              color: '#ffcc00' },
+            { val: h2h.away_wins, label: awayStats.team_name, color: '#ff6b35' },
+          ].map(({ val, label, color }) => (
+            <div key={label}>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: '18px', fontWeight: 700, color }}>{val}</div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: '8px', color: 'var(--text-muted)' }}>{label}</div>
+            </div>
+          ))}
         </div>
       </div>
       {h2h.last_5.length > 0 && (
@@ -479,16 +481,15 @@ function H2HCard({ h2h, homeStats, awayStats }) {
   )
 }
 
-/* ── Derniers matchs ── */
 function Last5Card({ home, away }) {
   return (
     <StatCard title="DERNIERS MATCHS">
       <div className="two-col-stats" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-        {[{ stats: home }, { stats: away }].map(({ stats }, idx) => (
+        {[home, away].map((stats, idx) => (
           <div key={idx}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
               {stats.crest_url && <img src={stats.crest_url} alt="" width={14} height={14} style={{ objectFit: 'contain' }} onError={(e) => { e.target.style.display = 'none' }} />}
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '8px', color: 'var(--text-muted)', letterSpacing: '0.08em' }}>{stats.team_name}</span>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '8px', color: 'var(--text-muted)' }}>{stats.team_name}</span>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
               {stats.last_5.map((m, i) => <MiniMatchRow key={i} match={m} />)}
@@ -513,7 +514,6 @@ function MiniMatchRow({ match }) {
   )
 }
 
-/* ── Prédictions ── */
 function PredictionSections({ prediction }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
@@ -531,14 +531,8 @@ function PredictionSections({ prediction }) {
         )}
       </StatCard>
       <StatCard title="OVER / UNDER">
-        {[
-          { label: 'OVER 0.5', value: prediction.over_05_proba },
-          { label: 'OVER 1.5', value: prediction.over_15_proba },
-          { label: 'OVER 2.5', value: prediction.over_25_proba },
-          { label: 'OVER 3.5', value: prediction.over_35_proba },
-          { label: 'OVER 4.5', value: prediction.over_45_proba },
-        ].map(({ label, value }, i) => (
-          <PredictionBar key={label} label={label} value={value} delay={80 + i * 100} />
+        {['over_05','over_15','over_25','over_35','over_45'].map((k, i) => (
+          <PredictionBar key={k} label={`OVER ${k.replace('over_','').replace('_','.')}`} value={prediction[`${k}_proba`]} delay={80 + i * 100} />
         ))}
       </StatCard>
       <StatCard title="LES DEUX ÉQUIPES MARQUENT">
@@ -553,14 +547,12 @@ function PredictionSections({ prediction }) {
       {prediction.top_scores?.length > 0 && (
         <StatCard title="SCORES EXACTS LES PLUS PROBABLES">
           {prediction.top_scores.slice(0, 5).map((s, i) => (
-            <ExactScoreRow key={i} rank={i + 1} home={s.home} away={s.away} probability={s.proba} delay={100 + i * 80} />
+            <ExactScoreRow key={i} rank={i+1} home={s.home} away={s.away} probability={s.proba} delay={100 + i*80} />
           ))}
         </StatCard>
       )}
       {prediction.confidence_score != null && (
-        <StatCard title="INDICE DE CONFIANCE">
-          <ConfidenceGauge score={prediction.confidence_score} />
-        </StatCard>
+        <StatCard title="INDICE DE CONFIANCE"><ConfidenceGauge score={prediction.confidence_score} /></StatCard>
       )}
       {prediction.disclaimer && (
         <div style={{ padding: '12px 16px', border: '1px solid var(--border)', borderRadius: '3px', fontFamily: 'var(--font-mono)', fontSize: '10px', color: 'var(--text-muted)', lineHeight: 1.7 }}>
@@ -571,7 +563,6 @@ function PredictionSections({ prediction }) {
   )
 }
 
-/* ── Composants partagés ── */
 function StatCard({ title, children }) {
   return (
     <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: '4px', padding: '20px' }}>
@@ -589,8 +580,7 @@ function AnalyzeButton({ loading, onClick }) {
     <button onClick={onClick} disabled={loading} className="analyze-btn">
       {loading
         ? <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' }}>
-            <span style={{ color: 'var(--accent-green)', animation: 'pulseGlow 1s infinite' }}>■ ■ ■</span>
-            ANALYSE EN COURS...
+            <span style={{ color: 'var(--accent-green)', animation: 'pulseGlow 1s infinite' }}>■ ■ ■</span> ANALYSE EN COURS...
           </span>
         : '⬡  ANALYSER CE MATCH'}
     </button>
@@ -606,7 +596,7 @@ function ExactScoreRow({ rank, home, away, probability, delay }) {
       <span style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', color: 'var(--text-muted)', width: '18px' }}>#{rank}</span>
       <span style={{ fontFamily: 'var(--font-mono)', fontSize: '18px', fontWeight: 700, color: 'var(--text-primary)', width: '44px' }}>{home}&thinsp;-&thinsp;{away}</span>
       <div style={{ flex: 1, height: '3px', background: 'var(--border)', borderRadius: '2px', overflow: 'hidden' }}>
-        <div style={{ height: '100%', width: filled ? `${Math.min(pct * 5, 100)}%` : '0%', background: 'var(--accent-cyan)', borderRadius: '2px', transition: 'width 0.9s cubic-bezier(0.4,0,0.2,1)', boxShadow: '0 0 6px rgba(0,204,255,0.55)' }} />
+        <div style={{ height: '100%', width: filled ? `${Math.min(pct*5,100)}%` : '0%', background: 'var(--accent-cyan)', borderRadius: '2px', transition: 'width 0.9s cubic-bezier(0.4,0,0.2,1)' }} />
       </div>
       <span style={{ fontFamily: 'var(--font-mono)', fontSize: '14px', fontWeight: 600, color: 'var(--accent-cyan)', minWidth: '40px', textAlign: 'right' }}>{pct}%</span>
     </div>
@@ -615,18 +605,14 @@ function ExactScoreRow({ rank, home, away, probability, delay }) {
 
 function MiniLoader() {
   return (
-    <div style={{ padding: '40px', textAlign: 'center', fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-muted)', letterSpacing: '0.1em' }}>
+    <div style={{ padding: '40px', textAlign: 'center', fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-muted)' }}>
       <span style={{ color: 'var(--accent-green)', animation: 'pulseGlow 1.4s infinite' }}>■ ■ ■</span>
     </div>
   )
 }
 
 function NoStats() {
-  return (
-    <div style={{ padding: '20px', fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-muted)' }}>
-      Stats non disponibles pour ce match.
-    </div>
-  )
+  return <div style={{ padding: '20px', fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-muted)' }}>Stats non disponibles.</div>
 }
 
 function ErrorBanner({ message }) {
@@ -639,7 +625,7 @@ function ErrorBanner({ message }) {
 
 function PageLoader() {
   return (
-    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '70vh', flexDirection: 'column', gap: '16px', fontFamily: 'var(--font-mono)', fontSize: '12px', color: 'var(--text-muted)', letterSpacing: '0.12em' }}>
+    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '70vh', flexDirection: 'column', gap: '16px', fontFamily: 'var(--font-mono)', fontSize: '12px', color: 'var(--text-muted)' }}>
       <span style={{ color: 'var(--accent-green)', fontSize: '20px', animation: 'pulseGlow 1.3s ease-in-out infinite' }}>■ ■ ■</span>
       CHARGEMENT...
     </div>
