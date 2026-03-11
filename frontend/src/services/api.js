@@ -14,5 +14,8 @@ export const getMatch = (id) =>
 export const getPrediction = (matchId, forceRefresh = false) =>
   api.get(`/predictions/${matchId}`, { params: { force_refresh: forceRefresh } })
 
+export const getMatchStats = (matchId) =>
+  api.get(`/matches/${matchId}/stats`)
+
 export const generateSmartTicket = (matchIds, mode = 'combined') =>
   api.post('/smart-ticket', { match_ids: matchIds, mode })

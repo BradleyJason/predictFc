@@ -7,7 +7,7 @@ Lance avec :
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import matches_router, predictions_router, smart_ticket_router
+from app.api.routes import matches_router, predictions_router, smart_ticket_router, stats_router
 from app.core.config import settings
 
 # ---------------------------------------------------------------------------
@@ -56,6 +56,7 @@ API_PREFIX = "/api/v1"
 app.include_router(matches_router, prefix=API_PREFIX)
 app.include_router(predictions_router, prefix=API_PREFIX)
 app.include_router(smart_ticket_router, prefix=API_PREFIX)
+app.include_router(stats_router, prefix=API_PREFIX)
 
 # ---------------------------------------------------------------------------
 # Health check

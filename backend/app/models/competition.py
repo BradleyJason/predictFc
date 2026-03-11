@@ -18,6 +18,7 @@ class Competition(Base):
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     country: Mapped[str | None] = mapped_column(String(50))
     season: Mapped[str | None] = mapped_column(String(10))  # ex: "2024-25"
+    crest_url: Mapped[str | None] = mapped_column(String(500))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

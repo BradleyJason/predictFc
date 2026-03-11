@@ -32,16 +32,11 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-# Ajoute backend/ au path pour importer FootballAPIClient et settings
 _BACKEND_PATH = Path(__file__).resolve().parent.parent.parent / "backend"
 sys.path.insert(0, str(_BACKEND_PATH))
 
 from app.core.config import settings  # noqa: E402
 from app.services.football_api import COMPETITIONS, FootballAPIClient  # noqa: E402
-
-# ---------------------------------------------------------------------------
-# Logging
-# ---------------------------------------------------------------------------
 
 logging.basicConfig(
     level=logging.INFO,
@@ -49,10 +44,6 @@ logging.basicConfig(
     datefmt="%Y-%m-%dT%H:%M:%S",
 )
 logger = logging.getLogger("predictfc.ingest")
-
-# ---------------------------------------------------------------------------
-# Définition des tables SQLAlchemy Core (pour l'upsert sans ORM)
-# ---------------------------------------------------------------------------
 
 _metadata = MetaData()
 
@@ -64,6 +55,7 @@ competitions_t = Table(
     Column("name", String(100), nullable=False),
     Column("country", String(50)),
     Column("season", String(10)),
+    Column("crest_url", String(500)),
     Column("created_at", DateTime(timezone=True), server_default=func.now()),
 )
 
@@ -75,6 +67,7 @@ teams_t = Table(
     Column("name", String(100), nullable=False),
     Column("short_name", String(50)),
     Column("competition_id", Integer),
+    Column("crest_url", String(500)),
     Column("created_at", DateTime(timezone=True), server_default=func.now()),
 )
 
@@ -96,34 +89,26 @@ matches_t = Table(
     Column("updated_at", DateTime(timezone=True), server_default=func.now()),
 )
 
-# ---------------------------------------------------------------------------
-# Helpers upsert
-# ---------------------------------------------------------------------------
-
 
 def _upsert_competition(conn, comp_info: dict, season: str) -> int:
-    """Upsert une compétition, retourne son ID interne.
-
-    Args:
-        conn: Connexion SQLAlchemy active.
-        comp_info: Dict retourné par get_competition() de l'API.
-        season: Ex. "2024-25".
-
-    Returns:
-        ID interne (colonne id) de la compétition.
-    """
+    """Upsert une compétition, retourne son ID interne."""
     row = {
         "code": comp_info["code"],
         "name": comp_info["name"],
         "country": comp_info.get("area", {}).get("name"),
         "season": season,
+        "crest_url": comp_info.get("emblem"),
     }
     stmt = (
         pg_insert(competitions_t)
         .values(**row)
         .on_conflict_do_update(
             index_elements=["code"],
-            set_={"name": row["name"], "season": row["season"]},
+            set_={
+                "name": row["name"],
+                "season": row["season"],
+                "crest_url": row["crest_url"],
+            },
         )
         .returning(competitions_t.c.id)
     )
@@ -134,16 +119,7 @@ def _upsert_competition(conn, comp_info: dict, season: str) -> int:
 
 
 def _upsert_teams(conn, teams: list[dict], competition_id: int) -> dict[int, int]:
-    """Upsert une liste d'équipes, retourne le mapping external_id → internal_id.
-
-    Args:
-        conn: Connexion SQLAlchemy active.
-        teams: Liste de dicts équipe depuis l'API.
-        competition_id: ID interne de la compétition.
-
-    Returns:
-        Dict {external_id: internal_id}.
-    """
+    """Upsert une liste d'équipes, retourne le mapping external_id → internal_id."""
     mapping: dict[int, int] = {}
     for team in teams:
         ext_id: int = team["id"]
@@ -152,6 +128,7 @@ def _upsert_teams(conn, teams: list[dict], competition_id: int) -> dict[int, int
             "name": team["name"],
             "short_name": team.get("shortName") or team.get("tla"),
             "competition_id": competition_id,
+            "crest_url": team.get("crest"),
         }
         stmt = (
             pg_insert(teams_t)
@@ -162,6 +139,7 @@ def _upsert_teams(conn, teams: list[dict], competition_id: int) -> dict[int, int
                     "name": row["name"],
                     "short_name": row["short_name"],
                     "competition_id": competition_id,
+                    "crest_url": row["crest_url"],
                 },
             )
             .returning(teams_t.c.id)
@@ -179,17 +157,7 @@ def _upsert_matches(
     competition_id: int,
     team_mapping: dict[int, int],
 ) -> int:
-    """Upsert une liste de matchs.
-
-    Args:
-        conn: Connexion SQLAlchemy active.
-        matches: Liste de dicts match depuis l'API.
-        competition_id: ID interne de la compétition.
-        team_mapping: Dict {external_id: internal_id} des équipes.
-
-    Returns:
-        Nombre de matchs upsertés.
-    """
+    """Upsert une liste de matchs."""
     count = 0
     for match in matches:
         home_ext = match.get("homeTeam", {}).get("id")
@@ -201,7 +169,6 @@ def _upsert_matches(
         home_score = score.get("home")
         away_score = score.get("away")
 
-        # parse utcDate → datetime
         match_date_str: str = match.get("utcDate", "")
         try:
             match_date = datetime.fromisoformat(match_date_str.replace("Z", "+00:00"))
@@ -244,20 +211,8 @@ def _upsert_matches(
     return count
 
 
-# ---------------------------------------------------------------------------
-# Pipeline principal
-# ---------------------------------------------------------------------------
-
-
 def _season_label(year: int) -> str:
-    """Retourne le label de saison 'YYYY-YY' depuis l'année de début.
-
-    Args:
-        year: Année de début de la saison (ex: 2024).
-
-    Returns:
-        Ex: "2024-25".
-    """
+    """Retourne le label de saison 'YYYY-YY' depuis l'année de début."""
     return f"{year}-{str(year + 1)[-2:]}"
 
 
@@ -265,12 +220,7 @@ def run(
     leagues: list[str] | None = None,
     seasons: list[int] | None = None,
 ) -> None:
-    """Lance le pipeline d'ingestion complet.
-
-    Args:
-        leagues: Liste de codes compétition à ingérer. Défaut: toutes.
-        seasons: Années de début de saison à ingérer. Défaut: [2024, 2023].
-    """
+    """Lance le pipeline d'ingestion complet."""
     if leagues is None:
         leagues = list(COMPETITIONS.values())
     if seasons is None:
@@ -293,7 +243,6 @@ def run(
                 season_label = _season_label(season_year)
                 logger.info("=== %s — saison %s ===", code, season_label)
 
-                # 1. Compétition
                 try:
                     comp_info = client.get_competition(code)
                 except Exception as exc:
@@ -302,7 +251,6 @@ def run(
 
                 comp_id = _upsert_competition(conn, comp_info, season_label)
 
-                # 2. Équipes
                 try:
                     teams = client.get_teams(code, season_year)
                 except Exception as exc:
@@ -314,7 +262,6 @@ def run(
 
                 team_mapping = _upsert_teams(conn, teams, comp_id) if teams else {}
 
-                # 3. Matchs (tous statuts)
                 try:
                     matches = client.get_matches(
                         code,
@@ -333,10 +280,6 @@ def run(
 
     logger.info("Ingestion terminée — %d matchs upsertés au total.", total_matches)
 
-
-# ---------------------------------------------------------------------------
-# CLI
-# ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Ingestion football-data.org → BDD")

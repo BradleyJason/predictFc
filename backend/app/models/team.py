@@ -17,6 +17,7 @@ class Team(Base):
     external_id: Mapped[int | None] = mapped_column(Integer, unique=True)  # ID football-data.org
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     short_name: Mapped[str | None] = mapped_column(String(50))
+    crest_url: Mapped[str | None] = mapped_column(String(500))
     competition_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("competitions.id")
     )

@@ -17,108 +17,127 @@ from app.schemas.smart_ticket import (
 from app.services.prediction_service import prediction_service
 
 logger = logging.getLogger(__name__)
-
 router = APIRouter(tags=["smart-ticket"])
 
-# ── Configuration constants ───────────────────────────────────────────────────
+# ── Seuils ────────────────────────────────────────────────────────────────────
+SEUIL_SAFE_MIN:  float = 0.60   # Smart Ticket : proba >= 60%
+SEUIL_HOT_MIN:   float = 0.35   # Danger Zone  : proba 35-59%
+SEUIL_HOT_MAX:   float = 0.59
+MAX_SELECTIONS:  int   = 8
 
-SEUIL_MIN_PROBA: float = 0.60
-MAX_SELECTIONS: int = 3
-
-# Map bet_type → (Prediction attribute name, display label)
+# ── Types de paris — (attribut sur Prediction, label affiché) ────────────────
+# NB: over_05 et over_15 exclus volontairement (trop safe, cote inutile)
 _CANDIDATE_TYPES: dict[str, tuple[str, str]] = {
-    "home_win":  ("home_win_proba",  "1X2 : Domicile gagne"),
-    "draw":      ("draw_proba",      "1X2 : Match nul"),
-    "away_win":  ("away_win_proba",  "1X2 : Extérieur gagne"),
-    "btts_yes":  ("btts_proba",      "BTTS : Les deux marquent"),
-    "over_15":   ("over_15_proba",   "Over 1.5 buts"),
-    "over_25":   ("over_25_proba",   "Over 2.5 buts"),
-    "home_draw": ("home_draw_proba", "Chance double : 1X"),
-    "away_draw": ("away_draw_proba", "Chance double : X2"),
-    "home_away": ("home_away_proba", "Chance double : 12"),
+    "home_win":  ("home_win_proba",  "Victoire domicile"),
+    "draw":      ("draw_proba",      "Match nul"),
+    "away_win":  ("away_win_proba",  "Victoire extérieur"),
+    "btts_yes":  ("btts_proba",      "Les deux marquent"),
+    "btts_no":   ("btts_proba",      "Les deux ne marquent pas"),
+    "over_25":   ("over_25_proba",   "Plus de 2.5 buts"),
+    "over_35":   ("over_35_proba",   "Plus de 3.5 buts"),
+    "over_45":   ("over_45_proba",   "Plus de 4.5 buts"),
+    "under_25":  ("over_25_proba",   "Moins de 2.5 buts"),
+    "under_35":  ("over_35_proba",   "Moins de 3.5 buts"),
+    "home_draw": ("home_draw_proba", "Chance double 1X"),
+    "away_draw": ("away_draw_proba", "Chance double X2"),
+    "home_away": ("home_away_proba", "Chance double 12"),
 }
 
-# Paires corrélées : ne pas combiner sur le même match
+# Types dont on prend l'inverse (1 - proba)
+_INVERSE_TYPES: set[str] = {"btts_no", "under_25", "under_35"}
+
+# ── Corrélations complètes — jamais combiner ces paires sur le même match ─────
 _CORRELATED_PAIRS: list[frozenset] = [
-    frozenset({"over_25",  "btts_yes"}),
-    frozenset({"home_win", "home_draw"}),
-    frozenset({"away_win", "away_draw"}),
-    frozenset({"draw",     "home_draw"}),
-    frozenset({"draw",     "away_draw"}),
+    # 1X2 entre eux
+    frozenset({"home_win",  "away_win"}),
+    frozenset({"home_win",  "draw"}),
+    frozenset({"away_win",  "draw"}),
+    # Chances doubles entre elles (se chevauchent)
+    frozenset({"home_draw", "away_draw"}),   # 1X et X2 partagent le nul
+    frozenset({"home_draw", "home_away"}),   # 1X et 12 partagent dom.
+    frozenset({"away_draw", "home_away"}),   # X2 et 12 partagent ext.
+    # Chances doubles vs 1X2 redondants
+    frozenset({"home_win",  "home_draw"}),
+    frozenset({"home_win",  "home_away"}),
+    frozenset({"away_win",  "away_draw"}),
+    frozenset({"away_win",  "home_away"}),
+    frozenset({"draw",      "home_draw"}),
+    frozenset({"draw",      "away_draw"}),
+    # Total buts
+    frozenset({"over_25",   "under_25"}),
+    frozenset({"over_35",   "under_35"}),
+    frozenset({"over_35",   "over_25"}),    # over_35 implique over_25
+    frozenset({"over_45",   "over_35"}),    # over_45 implique over_35
+    frozenset({"over_45",   "over_25"}),
+    frozenset({"under_25",  "under_35"}),   # under_25 implique under_35
+    # BTTS vs total buts (corrélés)
+    frozenset({"btts_yes",  "over_25"}),
+    frozenset({"btts_no",   "under_25"}),
+    frozenset({"btts_yes",  "btts_no"}),
 ]
 
-
-# ── Endpoint ──────────────────────────────────────────────────────────────────
 
 @router.post("/smart-ticket", response_model=SmartTicketOut)
 def generate_smart_ticket(
     request: SmartTicketRequest,
     db: Session = Depends(get_db),
 ) -> SmartTicketOut:
-    """Generate an optimised combined ticket for the requested matches.
+    """Génère un ticket optimisé.
 
-    Algorithm:
-        1. Get or create a prediction for each match_id.
-        2. Build a list of all bet candidates (probability ≥ 60 %).
-        3. Sort by probability (desc) and greedily select up to 3:
-           - Skip bets correlated with an already-selected bet on the same match.
-           - In "simple" mode: only one selection per match.
-        4. Compute combined probability as the product of selected probabilities.
-        5. Persist the ticket in DB.
-        6. Return ticket with selections, combined proba, confidence and disclaimer.
-
-    Raises:
-        422: If a match is missing, or no valid selections are found.
+    Modes :
+        simple   — meilleur pari unique par match (safe ≥ 60%)
+        combined — plusieurs paris indépendants par match (safe ≥ 60%)
+        hot      — paris risqués à haute valeur (proba 35-59%)
     """
+    is_hot = request.mode == "hot"
+    proba_min = SEUIL_HOT_MIN if is_hot else SEUIL_SAFE_MIN
+    proba_max = SEUIL_HOT_MAX if is_hot else 1.0
+
     candidates: list[SelectionItem] = []
     confidence_scores: list[int] = []
     first_pred_id: Optional[int] = None
 
-    # ── Step 1 & 2: collect candidate bets ───────────────────────────────────
+    # ── Collecte des candidats ────────────────────────────────────────────────
     for match_id in request.match_ids:
         try:
             pred, _ = prediction_service.get_or_create_prediction(match_id, db)
         except Exception as exc:
-            raise HTTPException(
-                status_code=422,
-                detail=f"Match {match_id} : {exc}",
-            )
+            raise HTTPException(status_code=422, detail=f"Match {match_id} : {exc}")
 
-        # Garder l'ID de la première prédiction pour la FK du ticket
         if first_pred_id is None:
             first_pred_id = pred.id
-
         if pred.confidence_score is not None:
             confidence_scores.append(pred.confidence_score)
 
         for bet_type, (attr, label) in _CANDIDATE_TYPES.items():
-            value: Optional[float] = getattr(pred, attr, None)
-            if value is not None and value >= SEUIL_MIN_PROBA:
-                candidates.append(
-                    SelectionItem(
-                        match_id=match_id,
-                        bet_type=bet_type,
-                        label=label,
-                        probability=value,
-                    )
-                )
+            raw: Optional[float] = getattr(pred, attr, None)
+            if raw is None:
+                continue
+            proba = (1.0 - raw) if bet_type in _INVERSE_TYPES else raw
+            if proba_min <= proba <= proba_max:
+                candidates.append(SelectionItem(
+                    match_id=match_id,
+                    bet_type=bet_type,
+                    label=label,
+                    probability=proba,
+                ))
 
-    # ── Step 3: greedy selection ──────────────────────────────────────────────
+    # ── Sélection gloutonne anti-corrélation ─────────────────────────────────
     candidates.sort(key=lambda c: c.probability, reverse=True)
 
     selected: list[SelectionItem] = []
     correlated_warning: Optional[str] = None
-    seen_matches: set[int] = set()
+    seen_matches_simple: set[int] = set()
 
     for cand in candidates:
         if len(selected) >= MAX_SELECTIONS:
             break
 
-        # Mode "simple" : une seule sélection par match
-        if request.mode == "simple" and cand.match_id in seen_matches:
+        # Mode simple : 1 seul pari par match
+        if request.mode == "simple" and cand.match_id in seen_matches_simple:
             continue
 
-        # Vérification des corrélations intra-match
+        # Anti-corrélation intra-match
         is_correlated = False
         for already in selected:
             if already.match_id == cand.match_id:
@@ -127,34 +146,29 @@ def generate_smart_ticket(
                     is_correlated = True
                     correlated_warning = (
                         f"Paris corrélés détectés ({already.bet_type} / {cand.bet_type}) "
-                        "— sélection ajustée pour optimiser la combinaison."
+                        "— sélection ajustée automatiquement."
                     )
                     break
 
         if not is_correlated:
             selected.append(cand)
-            seen_matches.add(cand.match_id)
+            seen_matches_simple.add(cand.match_id)
 
     if not selected:
-        raise HTTPException(
-            status_code=422,
-            detail=(
-                "Aucune sélection disponible avec le seuil actuel (min 60 %). "
-                "Vérifiez que le modèle a été entraîné sur ces matchs."
-            ),
+        msg = (
+            "Aucun pari risqué trouvé dans la plage 35-59% pour ces matchs."
+            if is_hot else
+            "Aucune sélection disponible avec le seuil actuel (min 60%)."
         )
+        raise HTTPException(status_code=422, detail=msg)
 
-    # ── Step 4: compute combined metrics ─────────────────────────────────────
-    combined_proba: float = reduce(
-        lambda acc, sel: acc * sel.probability, selected, 1.0
-    )
+    # ── Métriques ─────────────────────────────────────────────────────────────
+    combined_proba: float = reduce(lambda acc, s: acc * s.probability, selected, 1.0)
     confidence_score: int = (
-        int(sum(confidence_scores) / len(confidence_scores))
-        if confidence_scores
-        else 50
+        int(sum(confidence_scores) / len(confidence_scores)) if confidence_scores else 50
     )
 
-    # ── Step 5: persist in DB ─────────────────────────────────────────────────
+    # ── Persistance ───────────────────────────────────────────────────────────
     ticket_orm = SmartTicket(
         match_id=request.match_ids[0],
         prediction_id=first_pred_id,
@@ -167,13 +181,10 @@ def generate_smart_ticket(
     db.commit()
     db.refresh(ticket_orm)
     logger.info(
-        "Smart Ticket créé id=%d | %d sélections | combined_proba=%.3f",
-        ticket_orm.id,
-        len(selected),
-        combined_proba,
+        "Ticket id=%d mode=%s | %d sélections | combined_proba=%.3f",
+        ticket_orm.id, request.mode, len(selected), combined_proba,
     )
 
-    # ── Step 6: return response ───────────────────────────────────────────────
     return SmartTicketOut(
         id=ticket_orm.id,
         match_id=ticket_orm.match_id,
