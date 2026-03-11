@@ -20,6 +20,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.match import Match
+from app.models.match_stat import MatchStat
 from app.models.prediction import Prediction
 
 if TYPE_CHECKING:

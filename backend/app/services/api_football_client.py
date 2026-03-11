@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 _CACHE_TTL = 3600   # 1 heure — les stats d'un match ne changent pas
 _MAX_RETRIES = 3
-_RATE_LIMIT_DELAY = 1.0  # api-football : limite souple, 1s suffit
+_RATE_LIMIT_DELAY = 6.5  # api-football : limite souple, 1s suffit
 
 
 class ApiFootballClient:
