@@ -19,9 +19,15 @@ from typing import TYPE_CHECKING
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.models.competition import Competition
 from app.models.match import Match
 from app.models.match_stat import MatchStat
 from app.models.prediction import Prediction
+from app.services.understat_client import understat_client
+from app.models.competition import Competition
+from app.services.understat_client import understat_client
+from app.models.competition import Competition
+from app.services.understat_client import understat_client
 
 if TYPE_CHECKING:
     from models.poisson_model import PoissonModel
@@ -172,13 +178,67 @@ def _compute_form_weights(
     home_team_id: int,
     away_team_id: int,
     db: Session,
+    competition_code: str | None = None,
+    match_date=None,
 ) -> tuple[float, float]:
-    """Multiplicateurs de forme sur les 5 derniers matchs.
+    """Multiplicateurs de forme avec 3 sources par priorite.
 
-    form_w = 0.8 + 0.4 * (points / 15)  →  plage [0.8, 1.2]
-    V=3, N=1, D=0
+    1. Understat xG (saison courante, top 5 ligues)
+    2. match_stats BDD xG (api-football historique)
+    3. Fallback points V=3/N=1/D=0
     """
+    from app.models.team import Team
+
+    def _xg_to_form_w(xg_avg: float) -> float:
+        return 0.8 + 0.4 * min(xg_avg / 1.5, 1.0)
+
     def _team_form(team_id: int) -> float:
+        team = db.get(Team, team_id)
+        team_name = team.name if team else None
+
+        # Source 1 : Understat (saison courante)
+        if team_name and competition_code and match_date:
+            try:
+                xg_list = understat_client.get_recent_xg(
+                    competition_code=competition_code,
+                    team_db_name=team_name,
+                    match_date=match_date,
+                    n=5,
+                )
+                if xg_list:
+                    xg_avg = sum(xg_list) / len(xg_list)
+                    form_w = _xg_to_form_w(xg_avg)
+                    logger.debug("Understat equipe %d (%s) xg_avg=%.2f -> %.3f", team_id, team_name, xg_avg, form_w)
+                    return form_w
+            except Exception as exc:
+                logger.warning("Understat erreur equipe %d : %s", team_id, exc)
+
+        # Source 2 : match_stats BDD (api-football)
+        xg_rows = db.execute(
+            select(MatchStat.expected_goals)
+            .join(Match, MatchStat.match_id == Match.id)
+            .where(
+                Match.status == "FINISHED",
+                MatchStat.expected_goals.is_not(None),
+                (Match.home_team_id == team_id) | (Match.away_team_id == team_id),
+                (
+                    ((Match.home_team_id == team_id) & (MatchStat.side == "HOME")) |
+                    ((Match.away_team_id == team_id) & (MatchStat.side == "AWAY"))
+                ),
+            )
+            .order_by(Match.match_date.desc())
+            .limit(5)
+        ).all()
+
+        if xg_rows:
+            xg_values = [r[0] for r in xg_rows if r[0] is not None]
+            if xg_values:
+                xg_avg = sum(xg_values) / len(xg_values)
+                form_w = _xg_to_form_w(xg_avg)
+                logger.debug("BDD-xG equipe %d xg_avg=%.2f -> %.3f", team_id, xg_avg, form_w)
+                return form_w
+
+        # Source 3 : fallback points
         rows = db.execute(
             select(Match.home_team_id, Match.away_team_id,
                    Match.home_score, Match.away_score)
@@ -198,19 +258,20 @@ def _compute_form_weights(
         points = 0
         for home_id, away_id, hs, aws in rows:
             if home_id == team_id:
-                if hs > aws:   points += 3
+                if hs > aws:    points += 3
                 elif hs == aws: points += 1
             else:
-                if aws > hs:   points += 3
+                if aws > hs:    points += 3
                 elif aws == hs: points += 1
 
-        return 0.8 + 0.4 * (points / 15.0)
+        form_w = 0.8 + 0.4 * (points / 15.0)
+        logger.debug("Points equipe %d pts=%d -> %.3f", team_id, points, form_w)
+        return form_w
 
     fh = _team_form(home_team_id)
     fa = _team_form(away_team_id)
-    logger.debug("Forme — dom=%.3f ext=%.3f", fh, fa)
+    logger.debug("Forme finale dom=%.3f ext=%.3f", fh, fa)
     return fh, fa
-
 
 # ---------------------------------------------------------------------------
 # Service principal
@@ -240,8 +301,16 @@ class PredictionService:
         _ensure_ml_path()
         from engine.score_matrix import predictions_to_db_row, score_matrix_to_predictions
 
+        comp_code = None
+        if match.competition_id:
+            comp = db.get(Competition, match.competition_id)
+            if comp:
+                comp_code = comp.code
+
         form_weight_home, form_weight_away = _compute_form_weights(
-            match.home_team_id, match.away_team_id, db
+            match.home_team_id, match.away_team_id, db,
+            competition_code=comp_code,
+            match_date=match.match_date,
         )
 
         model = get_model(db)
