@@ -2,7 +2,7 @@
 from datetime import date
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 
@@ -15,8 +15,6 @@ router = APIRouter(tags=["matches"])
 
 @router.get("/matches", response_model=MatchListOut)
 def list_matches(
-    from fastapi import APIRouter, Depends, HTTPException, Query
-
     competition_id: Optional[int] = Query(None, description="Filtrer par compétition"),
     status: Optional[str] = Query(None, description="SCHEDULED | IN_PLAY | FINISHED"),
     date_from: Optional[date] = Query(None, description="Date de début (YYYY-MM-DD)"),
@@ -26,16 +24,7 @@ def list_matches(
     limit: int = Query(20, ge=1, le=200),
     db: Session = Depends(get_db),
 ) -> MatchListOut:
-    """Return a paginated list of matches with optional filters.
-
-    Query params:
-        competition_id: Filter by competition FK.
-        status:         Filter by status string (e.g. SCHEDULED, FINISHED).
-        date_from:      Lower bound on match_date (inclusive).
-        date_to:        Upper bound on match_date (inclusive).
-        matchday:       Filter by matchday number.
-        skip / limit:   Pagination.
-    """
+    """Return a paginated list of matches with optional filters."""
     base_query = (
         select(Match)
         .options(

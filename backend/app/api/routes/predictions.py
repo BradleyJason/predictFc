@@ -41,7 +41,7 @@ def get_prediction(
         TopScore(
             home=s["home"],
             away=s["away"],
-            probability=s["probability"],
+            probability=s["proba"],
         )
         for s in raw_preds.get("top_scores", [])
     ]

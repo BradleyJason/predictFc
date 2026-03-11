@@ -78,7 +78,6 @@ def _train_model_from_db(db: Session) -> "PoissonModel":
         rows,
         columns=["match_id", "home_team_id", "away_team_id", "home_score", "away_score"],
     )
-    df = df.rename(columns={"home_score": "home_goals", "away_score": "away_goals"})
 
     model = PoissonModel(max_goals=6)
     model.fit(df)
