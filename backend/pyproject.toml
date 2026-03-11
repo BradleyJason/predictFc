@@ -16,6 +16,11 @@ pydantic = "^2.12.5"
 pydantic-settings = "^2.13.1"
 python-dotenv = "^1.2.2"
 supabase = "^2.28.0"
+understatapi = "^0.7.1"
+numpy = "^2.4.3"
+pandas = "^3.0.1"
+scipy = "^1.17.1"
+scikit-learn = "^1.8.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^9.0.2"
