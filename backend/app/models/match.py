@@ -44,6 +44,7 @@ class Match(Base):
     predictions: Mapped[list["Prediction"]] = relationship("Prediction", back_populates="match")  # noqa: F821
     player_stats: Mapped[list["PlayerStat"]] = relationship("PlayerStat", back_populates="match")  # noqa: F821
     smart_tickets: Mapped[list["SmartTicket"]] = relationship("SmartTicket", back_populates="match")  # noqa: F821
+    match_stats: Mapped[list["MatchStat"]] = relationship("MatchStat", back_populates="match")  # noqa: F821
 
     def __repr__(self) -> str:
         """Représentation lisible du modèle."""
