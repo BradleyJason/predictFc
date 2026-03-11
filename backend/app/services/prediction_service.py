@@ -1,15 +1,15 @@
 """PredictionService: generate and cache predictions using the Poisson ML model.
 
-Phase 3A — Nouvelles features :
-- days_ago : pondération temporelle dans le fit()
-- form_weight_home/away : multiplicateurs de forme sur les lambdas de predict()
-  calculés à partir des 5 derniers matchs de chaque équipe (V=3, N=1, D=0)
+Phase 3A : pondération temporelle xi + features de forme
+Phase 3A+ : sauvegarde/chargement du modèle en .pkl
 
-Design :
-- Imports ML lazy (FastAPI démarre même sans ml/)
-- Singleton PoissonModel protégé par threading.Lock (double-checked locking)
+Stratégie de cache :
+  1. Si model.pkl existe et est récent (< MODEL_TTL_HOURS) → on le charge
+  2. Sinon → on entraîne depuis la BDD et on sauvegarde
+  3. invalidate_model() supprime le .pkl → force ré-entraînement
 """
 import logging
+import pickle
 import sys
 import threading
 from datetime import datetime, timezone
@@ -21,7 +21,6 @@ from sqlalchemy.orm import Session
 
 from app.models.match import Match
 from app.models.prediction import Prediction
-from app.schemas.prediction import TopScore
 
 if TYPE_CHECKING:
     from models.poisson_model import PoissonModel
@@ -30,6 +29,13 @@ logger = logging.getLogger(__name__)
 
 _ML_PATH = Path(__file__).resolve().parent.parent.parent.parent / "ml"
 _MODEL_VERSION = "poisson_dixon_coles_v2_temporal"
+
+# Chemin de sauvegarde du modèle sérialisé
+_MODEL_PKL = Path(__file__).resolve().parent.parent.parent / "model_cache" / "model.pkl"
+
+# Durée de validité du cache pkl : 24h
+# Au-delà, on ré-entraîne automatiquement pour intégrer les nouveaux matchs
+_MODEL_TTL_HOURS = 24
 
 _model: "PoissonModel | None" = None
 _model_lock = threading.Lock()
@@ -42,12 +48,40 @@ def _ensure_ml_path() -> None:
         logger.debug("Added ML path: %s", ml_str)
 
 
-def _train_model_from_db(db: Session) -> "PoissonModel":
-    """Entraîne le modèle sur les matchs FINISHED avec pondération temporelle.
+def _pkl_is_fresh() -> bool:
+    """Vérifie si le fichier .pkl existe et date de moins de MODEL_TTL_HOURS."""
+    if not _MODEL_PKL.exists():
+        return False
+    age_hours = (datetime.now().timestamp() - _MODEL_PKL.stat().st_mtime) / 3600
+    return age_hours < _MODEL_TTL_HOURS
 
-    Nouveauté Phase 3A : on récupère match_date pour calculer days_ago,
-    ce qui active la pondération temporelle xi dans PoissonModel.fit().
-    """
+
+def _load_model_from_pkl() -> "PoissonModel | None":
+    """Charge le modèle depuis le .pkl. Retourne None si échec."""
+    try:
+        _ensure_ml_path()
+        with open(_MODEL_PKL, "rb") as f:
+            model = pickle.load(f)
+        logger.info("Modèle chargé depuis %s", _MODEL_PKL)
+        return model
+    except Exception as exc:
+        logger.warning("Impossible de charger le .pkl : %s", exc)
+        return None
+
+
+def _save_model_to_pkl(model: "PoissonModel") -> None:
+    """Sauvegarde le modèle en .pkl. Crée le dossier si nécessaire."""
+    try:
+        _MODEL_PKL.parent.mkdir(parents=True, exist_ok=True)
+        with open(_MODEL_PKL, "wb") as f:
+            pickle.dump(model, f)
+        logger.info("Modèle sauvegardé → %s", _MODEL_PKL)
+    except Exception as exc:
+        logger.error("Erreur sauvegarde .pkl : %s", exc)
+
+
+def _train_model_from_db(db: Session) -> "PoissonModel":
+    """Entraîne le modèle sur les matchs FINISHED avec pondération temporelle."""
     _ensure_ml_path()
     import pandas as pd
     from models.poisson_model import PoissonModel
@@ -59,7 +93,7 @@ def _train_model_from_db(db: Session) -> "PoissonModel":
             Match.away_team_id,
             Match.home_score,
             Match.away_score,
-            Match.match_date,          # ← nouveau : pour pondération temporelle
+            Match.match_date,
         ).where(
             Match.status == "FINISHED",
             Match.home_score.is_not(None),
@@ -78,14 +112,11 @@ def _train_model_from_db(db: Session) -> "PoissonModel":
                  "home_score", "away_score", "match_date"],
     )
 
-    # ── Calcul de days_ago ──────────────────────────────────────────────────
-    # days_ago = nombre de jours entre le match et aujourd'hui
-    # Plus days_ago est grand → poids exp(-xi * days_ago) est petit
     now = datetime.now(timezone.utc)
 
     def _days_ago(dt: datetime) -> float:
         if dt is None:
-            return 365.0  # valeur par défaut : 1 an
+            return 365.0
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
         return max(0.0, (now - dt).total_seconds() / 86400)
@@ -94,33 +125,46 @@ def _train_model_from_db(db: Session) -> "PoissonModel":
 
     model = PoissonModel(max_goals=6, xi=0.0015)
     model.fit(df)
-    logger.info(
-        "PoissonModel v2 entraîné — %d matchs | xi=%.4f",
-        len(df), model.xi,
-    )
+    logger.info("PoissonModel entraîné — %d matchs | xi=%.4f", len(df), model.xi)
     return model
 
 
 def get_model(db: Session) -> "PoissonModel":
-    """Retourne le singleton PoissonModel, en l'entraînant si nécessaire."""
+    """Retourne le singleton PoissonModel.
+
+    Ordre de priorité :
+      1. Singleton en mémoire (déjà chargé dans ce process)
+      2. Cache .pkl frais (< 24h) → chargement instantané
+      3. Ré-entraînement depuis la BDD + sauvegarde .pkl
+    """
     global _model
     if _model is None:
         with _model_lock:
             if _model is None:
+                if _pkl_is_fresh():
+                    loaded = _load_model_from_pkl()
+                    if loaded is not None:
+                        _model = loaded
+                        return _model
+                # Entraînement complet
                 _model = _train_model_from_db(db)
+                _save_model_to_pkl(_model)
     return _model
 
 
 def invalidate_model() -> None:
-    """Force le ré-entraînement au prochain appel."""
+    """Supprime le .pkl et le singleton → ré-entraînement au prochain appel."""
     global _model
     with _model_lock:
         _model = None
-    logger.info("Cache modèle invalidé.")
+        if _MODEL_PKL.exists():
+            _MODEL_PKL.unlink()
+            logger.info("model.pkl supprimé.")
+    logger.info("Cache modèle invalidé — ré-entraînement au prochain appel.")
 
 
 # ---------------------------------------------------------------------------
-# Calcul des features de forme
+# Features de forme (Phase 3A)
 # ---------------------------------------------------------------------------
 
 def _compute_form_weights(
@@ -128,31 +172,12 @@ def _compute_form_weights(
     away_team_id: int,
     db: Session,
 ) -> tuple[float, float]:
-    """Calcule les multiplicateurs de forme pour les deux équipes.
+    """Multiplicateurs de forme sur les 5 derniers matchs.
 
-    Pour chaque équipe, on récupère les 5 derniers matchs FINISHED
-    et on calcule un score de forme normalisé autour de 1.0 :
-
-        points  = Σ (V=3, N=1, D=0) sur 5 matchs      → max = 15
-        form_w  = 0.8 + 0.4 * (points / 15)
-                → plage [0.8 ; 1.2]
-
-    Exemples :
-        5 victoires  → 15 pts → form_w = 1.2   (+20% sur les lambdas)
-        3V 1N 1D     → 10 pts → form_w = 1.07
-        Forme neutre → 7.5 pts → form_w = 1.0  (valeur centrale)
-        5 défaites   → 0 pts  → form_w = 0.8   (-20% sur les lambdas)
-
-    Args:
-        home_team_id: ID de l'équipe à domicile.
-        away_team_id: ID de l'équipe à l'extérieur.
-        db:           Session SQLAlchemy.
-
-    Returns:
-        (form_weight_home, form_weight_away) — deux floats dans [0.8, 1.2].
+    form_w = 0.8 + 0.4 * (points / 15)  →  plage [0.8, 1.2]
+    V=3, N=1, D=0
     """
     def _team_form(team_id: int) -> float:
-        # Récupère les 5 derniers matchs FINISHED de cette équipe
         rows = db.execute(
             select(Match.home_team_id, Match.away_team_id,
                    Match.home_score, Match.away_score)
@@ -167,35 +192,23 @@ def _compute_form_weights(
         ).all()
 
         if not rows:
-            return 1.0  # équipe inconnue → forme neutre
+            return 1.0
 
         points = 0
         for home_id, away_id, hs, aws in rows:
             if home_id == team_id:
-                # L'équipe jouait à domicile
-                if hs > aws:
-                    points += 3   # victoire
-                elif hs == aws:
-                    points += 1   # nul
-                # défaite → 0
+                if hs > aws:   points += 3
+                elif hs == aws: points += 1
             else:
-                # L'équipe jouait à l'extérieur
-                if aws > hs:
-                    points += 3
-                elif aws == hs:
-                    points += 1
+                if aws > hs:   points += 3
+                elif aws == hs: points += 1
 
-        # Normalisation : max 15 pts → form_w ∈ [0.8, 1.2]
         return 0.8 + 0.4 * (points / 15.0)
 
-    form_home = _team_form(home_team_id)
-    form_away = _team_form(away_team_id)
-
-    logger.debug(
-        "Forme — domicile=%.3f extérieur=%.3f",
-        form_home, form_away,
-    )
-    return form_home, form_away
+    fh = _team_form(home_team_id)
+    fa = _team_form(away_team_id)
+    logger.debug("Forme — dom=%.3f ext=%.3f", fh, fa)
+    return fh, fa
 
 
 # ---------------------------------------------------------------------------
@@ -203,7 +216,6 @@ def _compute_form_weights(
 # ---------------------------------------------------------------------------
 
 class PredictionService:
-    """Génère, persiste et met en cache les prédictions."""
 
     def get_or_create_prediction(
         self,
@@ -211,22 +223,6 @@ class PredictionService:
         db: Session,
         force_refresh: bool = False,
     ) -> tuple[Prediction, dict]:
-        """Retourne (Prediction ORM, raw_predictions dict).
-
-        Si force_refresh=False et qu'une ligne existe en BDD, la retourne
-        directement sans relancer le modèle.
-
-        Args:
-            match_id:      PK du Match.
-            db:            Session SQLAlchemy.
-            force_refresh: Ignorer le cache BDD et recalculer.
-
-        Returns:
-            (Prediction ORM, dict avec les prédictions brutes ML).
-
-        Raises:
-            ValueError: Match introuvable ou équipes manquantes.
-        """
         if not force_refresh:
             existing = db.scalars(
                 select(Prediction).where(Prediction.match_id == match_id)
@@ -243,14 +239,11 @@ class PredictionService:
         _ensure_ml_path()
         from engine.score_matrix import predictions_to_db_row, score_matrix_to_predictions
 
-        # ── Phase 3A : calcul des features de forme ─────────────────────────
         form_weight_home, form_weight_away = _compute_form_weights(
             match.home_team_id, match.away_team_id, db
         )
 
         model = get_model(db)
-
-        # predict() accepte maintenant les multiplicateurs de forme
         matrix = model.predict(
             match.home_team_id,
             match.away_team_id,
@@ -259,8 +252,6 @@ class PredictionService:
         )
 
         raw_preds = score_matrix_to_predictions(matrix)
-
-        # Enrichissement du dict brut avec les infos de forme (pour debug/logs)
         raw_preds["form_weight_home"] = form_weight_home
         raw_preds["form_weight_away"] = form_weight_away
 
@@ -287,8 +278,6 @@ class PredictionService:
 
         return pred, raw_preds
 
-    # ── Helpers ──────────────────────────────────────────────────────────────
-
     @staticmethod
     def _prediction_to_dict(pred: Prediction) -> dict:
         return {
@@ -312,12 +301,6 @@ class PredictionService:
 
     @staticmethod
     def _compute_confidence(preds: dict, model: "PoissonModel") -> int:
-        """Score de confiance 0–100.
-
-        Phase 3A : on intègre la forme dans le score de confiance.
-        Une forte asymétrie de forme (une équipe très en forme, l'autre pas)
-        augmente la cohérence de la prédiction.
-        """
         n_teams = len(getattr(model, "teams", []))
         data_quality = min(1.0, n_teams / 40)
 
@@ -329,10 +312,9 @@ class PredictionService:
         max_p = max(hw, d, aw)
         prediction_coherence = min(1.0, max(0.0, (max_p - 0.33) * 3.0))
 
-        # Bonus forme : asymétrie entre les deux équipes
         fh = preds.get("form_weight_home", 1.0)
         fa = preds.get("form_weight_away", 1.0)
-        form_asymmetry = min(1.0, abs(fh - fa) / 0.4)  # 0.4 = écart max possible
+        form_asymmetry = min(1.0, abs(fh - fa) / 0.4)
 
         volatility = 0.25 if d > 0.30 else 0.10
 
