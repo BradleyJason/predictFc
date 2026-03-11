@@ -76,7 +76,7 @@ export default function Dashboard() {
   const liveCount = allMatches.filter((m) => m.status === 'IN_PLAY').length
 
   return (
-    <div style={{ maxWidth: '1240px', margin: '0 auto', padding: '36px 24px' }}>
+    <div className="page-container" style={{ maxWidth: '1240px', margin: '0 auto', padding: '36px 24px' }}>
       <div style={{ marginBottom: '32px' }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: '14px', marginBottom: '8px' }}>
           <h1 style={{
@@ -103,7 +103,8 @@ export default function Dashboard() {
         <div style={{ width: '44px', height: '2px', background: 'var(--accent-green)', boxShadow: '0 0 10px var(--accent-green)' }} />
       </div>
 
-      <div style={{ display: 'flex', gap: '4px', marginBottom: '20px' }}>
+      {/* Onglets — scroll horizontal sur mobile */}
+      <div className="tabs-row" style={{ display: 'flex', gap: '4px', marginBottom: '20px' }}>
         {TABS.map((t) => (
           <button
             key={t.key}
@@ -141,7 +142,8 @@ export default function Dashboard() {
         ))}
       </div>
 
-      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '32px' }}>
+      {/* Filtres ligues — scroll horizontal sur mobile */}
+      <div className="league-filters" style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '32px' }}>
         {LEAGUES.map((l) => (
           <button
             key={l.label}
@@ -158,9 +160,9 @@ export default function Dashboard() {
       {!loading && !error && filtered.length === 0 && <EmptyState tab={tab} />}
 
       {!loading && !error && filtered.length > 0 && (
-        <div style={{
+        <div className="matches-grid" style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
           gap: '14px',
         }}>
           {filtered.map((match, i) => (
