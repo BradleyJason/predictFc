@@ -276,6 +276,41 @@ class ApiFootballClient:
             if f["teams"]["away"]["id"] == away_team_id
         ]
 
+
+    def get_odds(self, fixture_id: int) -> list[dict]:
+        """Cotes bookmakers pour un match specifique.
+
+        Args:
+            fixture_id: ID du match cote api-football.
+
+        Returns:
+            Liste de bookmakers avec leurs cotes H/D/A, Over/Under, BTTS.
+            Exemple : [{"bookmaker": {"id": 6, "name": "Bwin"},
+                        "bets": [{"name": "Match Winner",
+                                  "values": [{"value": "Home", "odd": "1.85"},
+                                             {"value": "Draw", "odd": "3.40"},
+                                             {"value": "Away", "odd": "4.20"}]}]}]
+        """
+        data = self._get("/odds", params={"fixture": fixture_id})
+        response = data.get("response", [])
+        if response:
+            return response[0].get("bookmakers", [])
+        return []
+
+    def get_odds_live(self, fixture_id: int) -> list[dict]:
+        """Cotes live pour un match en cours.
+
+        Args:
+            fixture_id: ID du match.
+
+        Returns:
+            Cotes en temps reel (mise a jour toutes les 30s).
+        """
+        data = self._get("/odds/live", params={"fixture": fixture_id})
+        response = data.get("response", [])
+        if response:
+            return response[0].get("odds", [])
+        return []
     def check_status(self) -> dict:
         """Vérifie le quota restant (requêtes utilisées / disponibles).
 

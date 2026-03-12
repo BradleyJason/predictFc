@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes import (
     enrichment_router,
     injuries_router,
+    odds_router,
     matches_router,
     predictions_router,
     smart_ticket_router,
@@ -93,6 +94,7 @@ app.include_router(smart_ticket_router, prefix=API_PREFIX)
 app.include_router(stats_router,        prefix=API_PREFIX)
 app.include_router(enrichment_router,   prefix=API_PREFIX)
 app.include_router(injuries_router,     prefix=API_PREFIX)
+app.include_router(odds_router,         prefix=API_PREFIX)
 
 # ---------------------------------------------------------------------------
 # Routes systeme

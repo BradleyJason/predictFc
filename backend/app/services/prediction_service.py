@@ -26,6 +26,7 @@ from app.models.match_stat import MatchStat
 from app.models.prediction import Prediction
 from app.services.understat_client import understat_client
 from app.services.injury_service import compute_injury_penalty
+from app.services.odds_service import get_odds_for_match, odds_to_probas
 
 # XGBoost (Phase 3E)
 _XGB_MODEL = None
@@ -450,7 +451,30 @@ class PredictionService:
                 blended["home_win_proba"], blended["draw_proba"], blended["away_win_proba"])
         except Exception as exc:
             logger.warning("XGBoost indisponible, DC seul : %s", exc)
-        # ─────────────────────────────────────────────────────────────────
+
+        # ── Blend cotes bookmakers (Phase 4C) ───────────────────────────────
+        try:
+            odds_list = get_odds_for_match(match_id, db)
+            if odds_list:
+                bookie_probas = odds_to_probas(odds_list)
+                if bookie_probas:
+                    w_bookie = 0.35
+                    w_model  = 0.65
+                    raw_preds["home_win_proba"] = w_model * raw_preds["home_win_proba"] + w_bookie * bookie_probas["home_win"]
+                    raw_preds["draw_proba"]     = w_model * raw_preds["draw_proba"]     + w_bookie * bookie_probas["draw"]
+                    raw_preds["away_win_proba"] = w_model * raw_preds["away_win_proba"] + w_bookie * bookie_probas["away_win"]
+                    raw_preds["bookie_home_win"] = bookie_probas["home_win"]
+                    raw_preds["bookie_draw"]     = bookie_probas["draw"]
+                    raw_preds["bookie_away_win"] = bookie_probas["away_win"]
+                    raw_preds["bookie_margin"]   = bookie_probas.get("margin", 0.0)
+                    logger.info(
+                        "Bookie blend OK : bookie=(%.2f/%.2f/%.2f) margin=%.1f%%",
+                        bookie_probas["home_win"], bookie_probas["draw"], bookie_probas["away_win"],
+                        bookie_probas.get("margin", 0) * 100,
+                    )
+        except Exception as exc:
+            logger.warning("Cotes indisponibles, modele seul : %s", exc)
+        # ────────────────────────────────────────────────────────────────────
         db_row_data = predictions_to_db_row(raw_preds)
         confidence = self._compute_confidence(raw_preds, model)
 
