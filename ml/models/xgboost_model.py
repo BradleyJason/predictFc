@@ -55,6 +55,10 @@ DERIVED_FEATURES = [
     "diff_goals_conceded",
     "diff_points",
     "diff_gd",
+    # Features orientees nuls (Phase 3E+)
+    "abs_diff_gd",      # equilibre entre equipes (faible -> match serre -> nul possible)
+    "abs_diff_points",  # equilibre de forme
+    "avg_goals_total",  # caractere offensif/defensif du match
 ]
 
 ALL_FEATURES = BASE_FEATURES + DERIVED_FEATURES
@@ -81,6 +85,10 @@ def _add_derived_features(df: pd.DataFrame) -> pd.DataFrame:
     df["diff_goals_conceded"] = df["home_goals_conceded_avg5"] - df["away_goals_conceded_avg5"]
     df["diff_points"]         = df["home_points_avg5"]         - df["away_points_avg5"]
     df["diff_gd"]             = df["home_gd_avg5"]             - df["away_gd_avg5"]
+    # Features orientees nuls
+    df["abs_diff_gd"]         = df["diff_gd"].abs()
+    df["abs_diff_points"]     = df["diff_points"].abs()
+    df["avg_goals_total"]     = (df["home_goals_scored_avg5"] + df["away_goals_scored_avg5"]) / 2
     return df
 
 
