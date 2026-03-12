@@ -1,29 +1,24 @@
 """SQLAlchemy model for teams table."""
-
 from datetime import datetime
-
 from sqlalchemy import DateTime, ForeignKey, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-
 from app.core.database import Base
-
 
 class Team(Base):
     """Représente une équipe de football."""
-
     __tablename__ = "teams"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    external_id: Mapped[int | None] = mapped_column(Integer, unique=True)  # ID football-data.org
+    external_id: Mapped[int | None] = mapped_column(Integer, unique=True)  # football-data.org (legacy)
+    api_football_id: Mapped[int | None] = mapped_column(Integer, unique=True, index=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     short_name: Mapped[str | None] = mapped_column(String(50))
+    country: Mapped[str | None] = mapped_column(String(50))
+    venue_name: Mapped[str | None] = mapped_column(String(100))
+    venue_capacity: Mapped[int | None] = mapped_column(Integer)
     crest_url: Mapped[str | None] = mapped_column(String(500))
-    competition_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("competitions.id")
-    )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    competition_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("competitions.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     # Relations
     competition: Mapped["Competition"] = relationship("Competition", back_populates="teams")  # noqa: F821
@@ -36,5 +31,4 @@ class Team(Base):
     )
 
     def __repr__(self) -> str:
-        """Représentation lisible du modèle."""
-        return f"<Team {self.name}>"
+        return f"<Team {self.name} api_id={self.api_football_id}>"
