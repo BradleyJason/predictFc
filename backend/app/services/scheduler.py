@@ -235,6 +235,26 @@ def task_import_recent_stats() -> None:
         logger.error("[Scheduler] Erreur task_import_recent_stats : %s", exc)
 
 
+
+def task_update_live_scores() -> None:
+    """Met a jour les scores des matchs en cours (toutes les 2 min)."""
+    logger.info("[Scheduler] Mise a jour scores live...")
+    try:
+        from app.core.database import SessionLocal
+        from app.services.live_service import fetch_live_scores
+        db = SessionLocal()
+        try:
+            result = fetch_live_scores(db)
+            if result["live_matches"]:
+                logger.info(
+                    "[Scheduler] Live : %d matchs en cours, %d mis a jour",
+                    len(result["live_matches"]), result["updated"],
+                )
+        finally:
+            db.close()
+    except Exception as exc:
+        logger.error("[Scheduler] Erreur live scores : %s", exc)
+
 def task_invalidate_model_cache() -> None:
     """Invalide le cache ML pour forcer le rechargement avec les nouvelles donnees."""
     logger.info("[Scheduler] Invalidation cache modele ML...")
@@ -281,4 +301,15 @@ def create_scheduler() -> BackgroundScheduler:
         misfire_grace_time=3600,
     )
 
+
+    # Toutes les 2 min : mise a jour scores live
+    scheduler.add_job(
+        task_update_live_scores,
+        trigger="interval",
+        minutes=2,
+        id="update_live_scores",
+        name="Mise a jour scores live",
+        replace_existing=True,
+        misfire_grace_time=60,
+    )
     return scheduler
