@@ -30,16 +30,6 @@ from app.services.understat_client import understat_client
 _XGB_MODEL = None
 _XGB_PKL = Path(__file__).parent.parent.parent.parent / "ml" / "model_cache" / "xgb_model.pkl"
 
-from app.models.competition import Competition
-from app.services.understat_client import understat_client
-
-# XGBoost (Phase 3E)
-
-from app.models.competition import Competition
-from app.services.understat_client import understat_client
-
-# XGBoost (Phase 3E)
-
 
 if TYPE_CHECKING:
     from models.poisson_model import PoissonModel

@@ -17,6 +17,7 @@ class TeamBrief(BaseModel):
     """Minimal team info embedded in match responses."""
     id: int
     external_id: Optional[int] = None
+    api_football_id: Optional[int] = None
     name: str
     short_name: Optional[str] = None
     crest_url: Optional[str] = None
@@ -47,6 +48,11 @@ class MatchOut(BaseModel):
     """Full match representation returned by the API."""
     id: int
     external_id: Optional[int] = None
+    api_football_id: Optional[int] = None
+    season_id: Optional[int] = None
+    round: Optional[str] = None
+    venue: Optional[str] = None
+    referee: Optional[str] = None
     competition: Optional[CompetitionBrief] = None
     home_team: Optional[TeamBrief] = None
     away_team: Optional[TeamBrief] = None
@@ -63,6 +69,11 @@ class MatchListItemOut(BaseModel):
     """Match dans une liste — sans match_stats pour eviter le joinedload sur collection."""
     id: int
     external_id: Optional[int] = None
+    api_football_id: Optional[int] = None
+    season_id: Optional[int] = None
+    round: Optional[str] = None
+    venue: Optional[str] = None
+    referee: Optional[str] = None
     competition: Optional[CompetitionBrief] = None
     home_team: Optional[TeamBrief] = None
     away_team: Optional[TeamBrief] = None
