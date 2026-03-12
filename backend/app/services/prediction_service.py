@@ -25,6 +25,7 @@ from app.models.match import Match
 from app.models.match_stat import MatchStat
 from app.models.prediction import Prediction
 from app.services.understat_client import understat_client
+from app.services.injury_service import compute_injury_penalty
 
 # XGBoost (Phase 3E)
 _XGB_MODEL = None
@@ -410,6 +411,13 @@ class PredictionService:
             competition_code=comp_code,
             match_date=match.match_date,
         )
+
+        # Penalites blessures (Phase 4B)
+        injury_penalty_home, injury_penalty_away = compute_injury_penalty(
+            match.home_team_id, match.away_team_id, match_id, db
+        )
+        form_weight_home *= injury_penalty_home
+        form_weight_away *= injury_penalty_away
 
         model = get_model(db)
         matrix = model.predict(
