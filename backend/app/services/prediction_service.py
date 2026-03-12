@@ -27,6 +27,7 @@ from app.models.prediction import Prediction
 from app.services.understat_client import understat_client
 from app.services.injury_service import compute_injury_penalty
 from app.services.odds_service import get_odds_for_match, odds_to_probas
+from app.services.lineup_service import compute_formation_factor
 
 # XGBoost (Phase 3E)
 _XGB_MODEL = None
@@ -419,6 +420,13 @@ class PredictionService:
         )
         form_weight_home *= injury_penalty_home
         form_weight_away *= injury_penalty_away
+
+        # Facteur tactique formations (Phase 4D)
+        formation_fh, formation_fa = compute_formation_factor(
+            match.home_team_id, match.away_team_id, match_id, db
+        )
+        form_weight_home *= formation_fh
+        form_weight_away *= formation_fa
 
         model = get_model(db)
         matrix = model.predict(
