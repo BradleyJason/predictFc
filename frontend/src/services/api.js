@@ -42,3 +42,4 @@ export const getValueBetsSummary = ()            => api.get('/value-bets/summary
 // ── Teams ─────────────────────────────────────────
 export const searchTeams = (query)   => api.get('/teams/search', { params: { q: query } })
 export const getTeam     = (id)      => api.get(`/teams/${id}`)
+export const getMatchRawStats = (id) => api.get(`/matches/${id}/match-stats`)

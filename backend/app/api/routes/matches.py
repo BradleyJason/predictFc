@@ -77,3 +77,43 @@ def get_match(match_id: int, db: Session = Depends(get_db)) -> Match:
     if not match:
         raise HTTPException(status_code=404, detail=f"Match {match_id} introuvable.")
     return match
+
+
+@router.get("/matches/{match_id}/match-stats")
+def get_match_raw_stats(match_id: int, db: Session = Depends(get_db)):
+    """Retourne les stats brutes (MatchStat) du match — possession, tirs, xG, etc."""
+    from sqlalchemy import select
+    from app.models.match_stat import MatchStat
+    from app.models.team import Team
+
+    rows = db.execute(
+        select(MatchStat).where(MatchStat.match_id == match_id)
+    ).scalars().all()
+
+    if not rows:
+        return {"match_id": match_id, "stats": []}
+
+    result = []
+    for r in rows:
+        team = db.get(Team, r.team_id)
+        result.append({
+            "side":               r.side,
+            "team_name":          team.name if team else None,
+            "team_crest":         team.crest_url if team else None,
+            "shots_total":        r.shots_total,
+            "shots_on_goal":      r.shots_on_goal,
+            "shots_off_goal":     r.shots_off_goal,
+            "shots_blocked":      r.shots_blocked,
+            "ball_possession":    r.ball_possession,
+            "passes_total":       r.passes_total,
+            "passes_accurate":    r.passes_accurate,
+            "passes_pct":         r.passes_pct,
+            "corner_kicks":       r.corner_kicks,
+            "fouls":              r.fouls,
+            "offsides":           r.offsides,
+            "yellow_cards":       r.yellow_cards,
+            "red_cards":          r.red_cards,
+            "goalkeeper_saves":   r.goalkeeper_saves,
+            "expected_goals":     r.expected_goals,
+        })
+    return {"match_id": match_id, "stats": result}

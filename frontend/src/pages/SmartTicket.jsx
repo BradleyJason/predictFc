@@ -1,625 +1,427 @@
-import { useEffect, useState } from 'react'
-import { generateSmartTicket, getMatches } from '../services/api'
+import { useState, useEffect } from 'react'
+import { getMatches, generateSmartTicket } from '../services/api'
+import { fmtDateShort } from '../utils'
 
-const LEAGUE_NAMES = {
-  FL1: 'Ligue 1', PL: 'Premier League', PD: 'La Liga',
-  BL1: 'Bundesliga', SA: 'Serie A', CL: 'Champions League',
-}
-
-/* ─── Modes disponibles ─── */
 const MODES = [
-  {
-    key: 'combined',
-    label: 'SMART TICKET',
-    sublabel: 'Combiné safe',
-    desc: 'Plusieurs paris · Anti-corrélation · Proba ≥ 60%',
-    color: 'var(--accent-green)',
-    bg: 'rgba(0,255,136,0.08)',
-    minMatches: 2,
-    maxMatches: null,
-    hint: 'Sélectionnez au moins 2 matchs',
-  },
-  {
-    key: 'simple',
-    label: 'SIMPLE',
-    sublabel: 'Pari unique safe',
-    desc: 'Meilleur pari unique par match · Proba ≥ 60%',
-    color: 'var(--accent-cyan)',
-    bg: 'rgba(0,204,255,0.08)',
-    minMatches: 1,
-    maxMatches: 1,
-    hint: 'Sélectionnez exactement 1 match',
-  },
-  {
-    key: 'hot_simple',
-    label: '🔥 DANGER SIMPLE',
-    sublabel: 'Pari risqué unique',
-    desc: 'Paris à haute valeur · Proba 35–59% · 1 match',
-    color: '#ff6b35',
-    bg: 'rgba(255,107,53,0.08)',
-    minMatches: 1,
-    maxMatches: 1,
-    hint: 'Sélectionnez exactement 1 match',
-  },
-  {
-    key: 'hot_combined',
-    label: '🔥 DANGER COMBINÉ',
-    sublabel: 'Paris risqués combinés',
-    desc: 'Paris à haute valeur · Proba 35–59% · Multi-matchs',
-    color: '#ff4422',
-    bg: 'rgba(255,68,34,0.08)',
-    minMatches: 2,
-    maxMatches: null,
-    hint: 'Sélectionnez au moins 2 matchs',
-  },
+  { key: 'combined',       icon: '🎯', label: 'Combiné safe',    desc: 'Anti-corrélation · Proba ≥ 60%',  risk: 'safe'   },
+  { key: 'single',         icon: '✅', label: 'Simple safe',     desc: 'Meilleur pari unique · Proba ≥ 60%', risk: 'safe' },
+  { key: 'danger_single',  icon: '🔥', label: 'Danger simple',   desc: 'Haute valeur · Proba 35–57%',     risk: 'danger' },
+  { key: 'danger_combined',icon: '💣', label: 'Danger combiné',  desc: 'Multi-match risqué · Proba 35–57%', risk: 'danger'},
 ]
 
-function fmtShortDate(str) {
-  if (!str) return '—'
-  const d = new Date(str)
-  return d.toLocaleDateString('fr-FR', { weekday: 'short', day: '2-digit', month: 'short' })
-}
+const RISK_COLOR = { safe: 'var(--accent-green)', danger: '#ff6b35' }
 
-function probaColor(value, isHot = false) {
-  if (isHot) {
-    if (value >= 0.52) return '#ffcc00'
-    if (value >= 0.42) return '#ff6b35'
-    return '#ff4455'
-  }
-  if (value >= 0.75) return '#00ff88'
-  if (value >= 0.60) return '#00ccff'
-  return '#ffcc00'
-}
-
-function getDateWindow() {
-  const now = new Date()
-  const to  = new Date(now)
-  to.setDate(now.getDate() + 7)
-  return {
-    date_from: now.toISOString().split('T')[0],
-    date_to:   to.toISOString().split('T')[0],
-  }
-}
-
-/* ══════════════════════════════════════════
-   PAGE PRINCIPALE
-══════════════════════════════════════════ */
 export default function SmartTicket() {
-  const [matches,      setMatches]      = useState([])
-  const [matchLoad,    setMatchLoad]    = useState(true)
-  const [selected,     setSelected]     = useState([])
-  const [mode,         setMode]         = useState('combined')
-  const [ticket,       setTicket]       = useState(null)
-  const [ticketLoad,   setTicketLoad]   = useState(false)
-  const [error,        setError]        = useState(null)
-  const [leagueFilter, setLeagueFilter] = useState(null)
-  const [showModal,    setShowModal]    = useState(false)
-
-  const currentMode = MODES.find(m => m.key === mode)
+  const [matches,   setMatches]   = useState([])
+  const [grouped,   setGrouped]   = useState({})
+  const [selected,  setSelected]  = useState(new Set())
+  const [mode,      setMode]      = useState('combined')
+  const [result,    setResult]    = useState(null)
+  const [loading,   setLoading]   = useState(false)
+  const [fetching,  setFetching]  = useState(true)
+  const [compFilter,setCompFilter]= useState('ALL')
+  const [comps,     setComps]     = useState([])
 
   useEffect(() => {
-    const { date_from, date_to } = getDateWindow()
-    getMatches({ limit: 200, date_from, date_to })
-      .then((r) => {
-        const upcoming = (r.data.matches || []).filter((m) => m.status !== 'FINISHED')
-        setMatches(upcoming)
-        setMatchLoad(false)
+    const now  = new Date()
+    const to   = new Date(now); to.setDate(now.getDate() + 7)
+    getMatches({
+      limit:     60,
+      date_from: now.toISOString().split('T')[0],
+      date_to:   to.toISOString().split('T')[0],
+    }).then(r => {
+      const list = (r.data?.matches || []).filter(m =>
+        m.status === 'SCHEDULED' || m.status === 'TIMED'
+      )
+      setMatches(list)
+
+      // Grouper par date
+      const grp = {}
+      list.forEach(m => {
+        const d = m.match_date ? m.match_date.split('T')[0] : 'Inconnu'
+        if (!grp[d]) grp[d] = []
+        grp[d].push(m)
       })
-      .catch(() => setMatchLoad(false))
+      setGrouped(grp)
+
+      // Compétitions présentes
+      const seen = new Map()
+      list.forEach(m => {
+        if (m.competition && !seen.has(m.competition.id)) {
+          seen.set(m.competition.id, m.competition)
+        }
+      })
+      setComps([...seen.values()])
+      setFetching(false)
+    }).catch(() => setFetching(false))
   }, [])
 
-  // Quand on change de mode, on vide la sélection si elle dépasse le max
-  const handleModeChange = (newMode) => {
-    const m = MODES.find(x => x.key === newMode)
-    setMode(newMode)
-    setTicket(null)
-    setError(null)
-    if (m.maxMatches && selected.length > m.maxMatches) {
-      setSelected(selected.slice(0, m.maxMatches))
-    }
-  }
-
-  const toggleSelect = (id) => {
-    setSelected((prev) => {
-      if (prev.includes(id)) return prev.filter((x) => x !== id)
-      if (currentMode.maxMatches && prev.length >= currentMode.maxMatches) {
-        // Mode 1 match max : on remplace la sélection
-        return [id]
-      }
-      return [...prev, id]
+  const toggle = (id) => {
+    setSelected(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
     })
-    setTicket(null)
-    setError(null)
+    setResult(null)
   }
 
-  // Validation avant génération
-  const canGenerate = () => {
-    if (selected.length < currentMode.minMatches) return false
-    if (currentMode.maxMatches && selected.length > currentMode.maxMatches) return false
-    return true
+  const selectAll = () => {
+    const visible = filteredMatches().map(m => m.id)
+    setSelected(prev => {
+      const next = new Set(prev)
+      visible.forEach(id => next.add(id))
+      return next
+    })
   }
 
-  const getButtonLabel = () => {
-    if (ticketLoad) return null
-    if (selected.length === 0) return currentMode.hint
-    if (selected.length < currentMode.minMatches)
-      return `${currentMode.hint} (${selected.length}/${currentMode.minMatches} min)`
-    if (currentMode.maxMatches && selected.length > currentMode.maxMatches)
-      return `Maximum ${currentMode.maxMatches} match`
-    return `GÉNÉRER LE TICKET (${selected.length} match${selected.length > 1 ? 's' : ''})`
+  const clearAll = () => { setSelected(new Set()); setResult(null) }
+
+  const filteredMatches = () =>
+    compFilter === 'ALL' ? matches
+      : matches.filter(m => m.competition?.id === compFilter)
+
+  const filteredGrouped = () => {
+    const fm = filteredMatches()
+    const grp = {}
+    fm.forEach(m => {
+      const d = m.match_date ? m.match_date.split('T')[0] : 'Inconnu'
+      if (!grp[d]) grp[d] = []
+      grp[d].push(m)
+    })
+    return grp
   }
 
-  const handleGenerate = () => {
-    if (!canGenerate()) return
-    setTicketLoad(true)
-    setError(null)
-    // On mappe les modes danger vers 'hot' pour l'API
-    const apiMode = mode.startsWith('hot') ? 'hot' : mode
-    generateSmartTicket(selected, apiMode)
-      .then((r) => {
-        setTicket(r.data)
-        setTicketLoad(false)
-        setShowModal(true)
-      })
-      .catch((e) => {
-        setError(e?.response?.data?.detail || 'Impossible de générer le ticket.')
-        setTicketLoad(false)
-      })
+  const generate = async () => {
+    if (selected.size < 1) return
+    setLoading(true); setResult(null)
+    try {
+      const r = await generateSmartTicket([...selected], mode)
+      setResult(r.data)
+    } catch {
+      setResult({ error: 'Erreur lors de la génération.' })
+    }
+    setLoading(false)
   }
 
-  const LEAGUES = [...new Set(matches.map((m) => m.competition?.code).filter(Boolean))]
-  const displayedMatches = leagueFilter
-    ? matches.filter((m) => m.competition?.code === leagueFilter)
-    : matches
-  const isHot = mode.startsWith('hot')
-  const accentColor = isHot
-    ? (mode === 'hot_combined' ? '#ff4422' : '#ff6b35')
-    : currentMode.color
+  const selMode  = MODES.find(m => m.key === mode)
+  const selMatches = matches.filter(m => selected.has(m.id))
+  const canGen   = selected.size >= (mode.includes('combined') ? 2 : 1)
 
   return (
-    <div className="page-container" style={{
-      maxWidth: '1060px', margin: '0 auto',
-      padding: '36px 24px', boxSizing: 'border-box', width: '100%',
-    }}>
+    <div style={{ maxWidth: '1100px', margin: '0 auto', padding: '32px 24px' }}>
 
-      {/* ── Titre ── */}
-      <div style={{ marginBottom: '36px' }}>
-        <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(36px, 6vw, 56px)', letterSpacing: '0.04em', color: 'var(--text-primary)', lineHeight: 1, margin: 0, marginBottom: '8px' }}>
+      {/* Header */}
+      <div style={{ marginBottom: '28px' }}>
+        <div style={{ fontFamily: 'var(--font-mono)', fontSize: '9px', letterSpacing: '0.3em', color: 'var(--accent-green)', marginBottom: '8px' }}>◆ GÉNÉRATEUR</div>
+        <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(36px, 6vw, 64px)', color: 'var(--text-primary)', margin: '0 0 6px', letterSpacing: '0.04em', lineHeight: 1 }}>
           SMART TICKET
         </h1>
-        <div style={{ width: '44px', height: '2px', background: 'var(--accent-green)', boxShadow: '0 0 10px var(--accent-green)', marginBottom: '12px' }} />
-        <p style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-muted)', letterSpacing: '0.1em' }}>
-          SÉLECTIONNEZ DES MATCHS · GÉNÉREZ LE COMBINÉ OPTIMAL
+        <p style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-muted)', margin: 0 }}>
+          Sélectionne des matchs · On génère le combiné optimal pour toi
         </p>
       </div>
 
-      {/* ── Layout : liste + panneau ── */}
-      <div className="ticket-layout">
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: '20px', alignItems: 'start' }}>
 
-        {/* ── Gauche : liste matchs ── */}
-        <div style={{ minWidth: 0 }}>
+        {/* ── Colonne gauche : matchs ── */}
+        <div>
+          {/* Filtres compétitions */}
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '14px' }}>
+            <CompChip label="TOUS" active={compFilter === 'ALL'} onClick={() => setCompFilter('ALL')} />
+            {comps.slice(0, 6).map(c => (
+              <CompChip key={c.id} label={c.name} logo={c.crest_url} active={compFilter === c.id} onClick={() => setCompFilter(c.id)} />
+            ))}
+          </div>
 
-          {/* Filtres ligues */}
-          {LEAGUES.length > 1 && (
-            <div className="league-filters" style={{ display: 'flex', gap: '6px', marginBottom: '20px' }}>
-              <button onClick={() => setLeagueFilter(null)} className={`league-tab ${leagueFilter === null ? 'active' : ''}`}>TOUT</button>
-              {LEAGUES.map((code) => (
-                <button key={code} onClick={() => setLeagueFilter(code)} className={`league-tab ${leagueFilter === code ? 'active' : ''}`}>
-                  {LEAGUE_NAMES[code] || code}
-                </button>
+          {/* Barre actions */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '9px', color: 'var(--text-muted)', letterSpacing: '0.1em' }}>
+              {filteredMatches().length} MATCHS DISPONIBLES
+            </span>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <ActionBtn onClick={selectAll}>TOUT SÉLECT.</ActionBtn>
+              {selected.size > 0 && <ActionBtn onClick={clearAll} danger>EFFACER ({selected.size})</ActionBtn>}
+            </div>
+          </div>
+
+          {/* Liste matchs groupés par date */}
+          {fetching ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+              {Array.from({ length: 8 }, (_, i) => (
+                <div key={i} style={{ height: '44px', background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: '4px', animation: 'shimmer 1.4s infinite', opacity: 1 - i * 0.08 }} />
               ))}
             </div>
-          )}
+          ) : (
+            Object.entries(filteredGrouped()).sort(([a], [b]) => a.localeCompare(b)).map(([date, dayMatches]) => (
+              <div key={date} style={{ marginBottom: '14px' }}>
+                {/* Séparateur date */}
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: '10px',
+                  marginBottom: '6px',
+                }}>
+                  <div style={{ height: '1px', flex: 1, background: 'var(--border)' }} />
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '9px', color: 'var(--text-muted)', letterSpacing: '0.1em', whiteSpace: 'nowrap' }}>
+                    {formatDateLabel(date)}
+                  </span>
+                  <div style={{ height: '1px', flex: 1, background: 'var(--border)' }} />
+                </div>
 
-          {/* Header section */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px', flexWrap: 'wrap' }}>
-            <span style={{ color: 'var(--accent-green)', fontSize: '7px' }}>◆</span>
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', fontWeight: 600, letterSpacing: '0.16em', color: 'var(--text-muted)' }}>
-              MATCHS DISPONIBLES
-            </span>
-            {selected.length > 0 && (
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', fontWeight: 700, background: accentColor, color: '#06060e', borderRadius: '10px', padding: '1px 9px' }}>
-                {selected.length} SÉLECTIONNÉ{selected.length > 1 ? 'S' : ''}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                  {dayMatches.map(m => {
+                    const sel = selected.has(m.id)
+                    const home = m.home_team?.short_name || m.home_team?.name || '—'
+                    const away = m.away_team?.short_name || m.away_team?.name || '—'
+                    return (
+                      <div key={m.id} onClick={() => toggle(m.id)} style={{
+                        display: 'grid', gridTemplateColumns: '28px 1fr auto 1fr auto',
+                        alignItems: 'center', gap: '10px',
+                        padding: '10px 14px',
+                        background: sel ? 'rgba(0,255,136,0.06)' : 'var(--bg-surface)',
+                        border: `1px solid ${sel ? 'rgba(0,255,136,0.35)' : 'var(--border)'}`,
+                        borderRadius: '4px', cursor: 'pointer',
+                        transition: 'all 0.15s ease',
+                      }}
+                      onMouseEnter={(e) => { if (!sel) e.currentTarget.style.background = 'var(--bg-elevated)' }}
+                      onMouseLeave={(e) => { if (!sel) e.currentTarget.style.background = 'var(--bg-surface)' }}
+                      >
+                        {/* Checkbox */}
+                        <div style={{
+                          width: '18px', height: '18px', borderRadius: '4px', flexShrink: 0,
+                          border: `2px solid ${sel ? 'var(--accent-green)' : 'var(--border)'}`,
+                          background: sel ? 'var(--accent-green)' : 'transparent',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          transition: 'all 0.15s',
+                        }}>
+                          {sel && <span style={{ fontSize: '10px', color: '#06060e', fontWeight: 700 }}>✓</span>}
+                        </div>
+
+                        {/* Équipe domicile */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '7px', minWidth: 0, justifyContent: 'flex-end' }}>
+                          <span style={{ fontFamily: 'var(--font-display)', fontSize: '13px', color: sel ? 'var(--text-primary)' : 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {home}
+                          </span>
+                          {m.home_team?.crest_url && <img src={m.home_team.crest_url} alt="" width={20} height={20} style={{ objectFit: 'contain', flexShrink: 0 }} onError={e => e.target.style.display = 'none'} />}
+                        </div>
+
+                        {/* VS + heure */}
+                        <div style={{ textAlign: 'center', flexShrink: 0 }}>
+                          <div style={{ fontFamily: 'var(--font-mono)', fontSize: '9px', color: 'var(--text-muted)', letterSpacing: '0.1em' }}>VS</div>
+                          <div style={{ fontFamily: 'var(--font-mono)', fontSize: '8px', color: 'var(--text-muted)' }}>
+                            {m.match_date ? new Date(m.match_date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '—'}
+                          </div>
+                        </div>
+
+                        {/* Équipe extérieur */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '7px', minWidth: 0 }}>
+                          {m.away_team?.crest_url && <img src={m.away_team.crest_url} alt="" width={20} height={20} style={{ objectFit: 'contain', flexShrink: 0 }} onError={e => e.target.style.display = 'none'} />}
+                          <span style={{ fontFamily: 'var(--font-display)', fontSize: '13px', color: sel ? 'var(--text-primary)' : 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {away}
+                          </span>
+                        </div>
+
+                        {/* Compétition */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
+                          {m.competition?.crest_url && <img src={m.competition.crest_url} alt="" width={12} height={12} style={{ objectFit: 'contain' }} onError={e => e.target.style.display = 'none'} />}
+                          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '8px', color: 'var(--text-muted)', maxWidth: '70px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {m.competition?.name || ''}
+                          </span>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* ── Colonne droite : panneau ticket ── */}
+        <div style={{ position: 'sticky', top: '80px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+
+          {/* Mode de ticket */}
+          <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: '6px', padding: '16px' }}>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '8px', letterSpacing: '0.18em', color: 'var(--text-muted)', marginBottom: '10px' }}>TYPE DE TICKET</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              {MODES.map(m => {
+                const active = mode === m.key
+                const color  = RISK_COLOR[m.risk]
+                return (
+                  <div key={m.key} onClick={() => setMode(m.key)} style={{
+                    padding: '10px 12px', borderRadius: '4px', cursor: 'pointer',
+                    background: active ? `${color}10` : 'transparent',
+                    border: `1px solid ${active ? color + '50' : 'var(--border)'}`,
+                    transition: 'all 0.15s',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+                        <span style={{ fontSize: '13px' }}>{m.icon}</span>
+                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', fontWeight: 600, color: active ? color : 'var(--text-secondary)', letterSpacing: '0.06em' }}>
+                          {m.label}
+                        </span>
+                      </div>
+                      {active && <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: color, display: 'inline-block' }} />}
+                    </div>
+                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: '8px', color: 'var(--text-muted)', marginTop: '3px', paddingLeft: '20px' }}>
+                      {m.desc}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Sélection en cours */}
+          <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: '6px', padding: '16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: '8px', letterSpacing: '0.18em', color: 'var(--text-muted)' }}>
+                SÉLECTION
+              </div>
+              <span style={{
+                fontFamily: 'var(--font-mono)', fontSize: '9px', fontWeight: 700,
+                background: selected.size > 0 ? 'rgba(0,255,136,0.12)' : 'var(--bg-elevated)',
+                color: selected.size > 0 ? 'var(--accent-green)' : 'var(--text-muted)',
+                padding: '2px 8px', borderRadius: '10px',
+                border: `1px solid ${selected.size > 0 ? 'rgba(0,255,136,0.3)' : 'var(--border)'}`,
+              }}>
+                {selected.size} match{selected.size > 1 ? 's' : ''}
               </span>
+            </div>
+
+            {selMatches.length === 0 ? (
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', color: 'var(--text-muted)', textAlign: 'center', padding: '16px 0', lineHeight: 1.6 }}>
+                Clique sur les matchs<br />pour les ajouter
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', maxHeight: '200px', overflowY: 'auto' }}>
+                {selMatches.map(m => (
+                  <div key={m.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 8px', background: 'var(--bg-elevated)', borderRadius: '3px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
+                      {m.home_team?.crest_url && <img src={m.home_team.crest_url} alt="" width={14} height={14} style={{ objectFit: 'contain', flexShrink: 0 }} onError={e => e.target.style.display = 'none'} />}
+                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '9px', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {m.home_team?.short_name || '?'} vs {m.away_team?.short_name || '?'}
+                      </span>
+                    </div>
+                    <button onClick={(e) => { e.stopPropagation(); toggle(m.id) }} style={{
+                      background: 'transparent', border: 'none', color: 'var(--text-muted)',
+                      cursor: 'pointer', fontSize: '12px', padding: '0 2px', flexShrink: 0,
+                    }}>✕</button>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
 
-          {/* Hint mode */}
-          <div style={{ marginBottom: '12px', padding: '8px 12px', background: `${accentColor}10`, border: `1px solid ${accentColor}30`, borderRadius: '3px', fontFamily: 'var(--font-mono)', fontSize: '9px', color: accentColor, letterSpacing: '0.06em' }}>
-            {currentMode.hint}
-            {currentMode.maxMatches === 1 && selected.length === 1 && ' · ✓ 1 match sélectionné'}
-            {!currentMode.maxMatches && selected.length >= currentMode.minMatches && ` · ✓ ${selected.length} matchs sélectionnés`}
-          </div>
-
-          {/* Liste matchs */}
-          {matchLoad ? (
-            <div style={{ textAlign: 'center', padding: '48px', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', fontSize: '12px' }}>
-              <span style={{ animation: 'pulseGlow 1.4s infinite', color: 'var(--accent-green)' }}>■ ■ ■</span>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-              {displayedMatches.map((match) => (
-                <SelectableMatch
-                  key={match.id}
-                  match={match}
-                  selected={selected.includes(match.id)}
-                  onToggle={() => toggleSelect(match.id)}
-                  accentColor={accentColor}
-                />
+          {/* Résultat */}
+          {result && !result.error && (
+            <div style={{ background: 'rgba(0,255,136,0.06)', border: '1px solid rgba(0,255,136,0.25)', borderRadius: '6px', padding: '16px' }}>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: '8px', letterSpacing: '0.18em', color: 'var(--accent-green)', marginBottom: '12px' }}>
+                ✓ TICKET GÉNÉRÉ
+              </div>
+              {(result.bets || result.selections || []).map((bet, i) => (
+                <div key={i} style={{ marginBottom: '8px', padding: '8px', background: 'var(--bg-surface)', borderRadius: '4px', border: '1px solid var(--border)' }}>
+                  <div style={{ fontFamily: 'var(--font-display)', fontSize: '11px', color: 'var(--text-primary)', marginBottom: '3px' }}>
+                    {bet.match || bet.label || `Pari ${i + 1}`}
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    {bet.prediction && <Tag color="var(--accent-green)">{bet.prediction}</Tag>}
+                    {bet.probability && <Tag color="var(--accent-cyan)">{Math.round(bet.probability * 100)}%</Tag>}
+                    {bet.odd && <Tag color="var(--accent-amber)">Cote {bet.odd}</Tag>}
+                  </div>
+                </div>
               ))}
-              {displayedMatches.length === 0 && (
-                <div style={{ textAlign: 'center', padding: '40px', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', fontSize: '12px', border: '1px dashed var(--border)', borderRadius: '4px' }}>
-                  AUCUN MATCH DISPONIBLE CETTE SEMAINE
+              {result.total_odd && (
+                <div style={{ marginTop: '10px', padding: '10px', background: 'rgba(0,255,136,0.08)', borderRadius: '4px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '9px', color: 'var(--text-muted)', letterSpacing: '0.1em' }}>COTE TOTALE</span>
+                  <span style={{ fontFamily: 'var(--font-display)', fontSize: '20px', color: 'var(--accent-green)' }}>{result.total_odd?.toFixed(2)}</span>
                 </div>
               )}
             </div>
           )}
-        </div>
 
-        {/* ── Droite : panneau config ── */}
-        <div className="ticket-sticky" style={{ position: 'sticky', top: '76px', minWidth: 0 }}>
-
-          {/* Choix mode */}
-          <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: '4px', padding: '16px', marginBottom: '12px' }}>
-            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '9px', letterSpacing: '0.18em', color: 'var(--text-muted)', marginBottom: '10px' }}>
-              TYPE DE TICKET
+          {result?.error && (
+            <div style={{ background: 'rgba(255,68,85,0.08)', border: '1px solid rgba(255,68,85,0.2)', borderRadius: '6px', padding: '12px 16px', fontFamily: 'var(--font-mono)', fontSize: '10px', color: '#ff5566' }}>
+              {result.error}
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              {MODES.map((m) => (
-                <button
-                  key={m.key}
-                  onClick={() => handleModeChange(m.key)}
-                  style={{
-                    width: '100%', padding: '10px 12px', textAlign: 'left',
-                    background: mode === m.key ? m.bg : 'transparent',
-                    border: `1px solid ${mode === m.key ? m.color : 'var(--border)'}`,
-                    borderRadius: '3px', cursor: 'pointer', transition: 'all 0.15s ease',
-                    boxSizing: 'border-box',
-                  }}
-                >
-                  {/* Ligne titre */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '3px', gap: '8px' }}>
-                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', fontWeight: 700, letterSpacing: '0.1em', color: mode === m.key ? m.color : 'var(--text-secondary)', flexShrink: 0 }}>
-                      {m.label}
-                    </span>
-                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '8px', color: mode === m.key ? m.color : 'var(--text-muted)', letterSpacing: '0.06em', textAlign: 'right' }}>
-                      {m.sublabel}
-                    </span>
-                  </div>
-                  {/* Description */}
-                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: '8px', color: 'var(--text-muted)', letterSpacing: '0.03em', lineHeight: 1.5 }}>
-                    {m.desc}
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
+          )}
 
           {/* Bouton générer */}
-          <button
-            onClick={handleGenerate}
-            disabled={!canGenerate() || ticketLoad}
-            style={{
-              width: '100%', padding: '14px', borderRadius: '4px',
-              background: canGenerate() && !ticketLoad ? accentColor : 'var(--bg-elevated)',
-              border: `2px solid ${canGenerate() && !ticketLoad ? accentColor : 'var(--border)'}`,
-              color: canGenerate() && !ticketLoad ? '#06060e' : 'var(--text-muted)',
-              fontFamily: 'var(--font-ui)', fontSize: '12px', fontWeight: 700,
-              letterSpacing: '0.12em', textTransform: 'uppercase',
-              cursor: canGenerate() && !ticketLoad ? 'pointer' : 'not-allowed',
-              transition: 'all 0.2s ease', boxSizing: 'border-box',
-              boxShadow: canGenerate() && !ticketLoad ? `0 0 20px ${accentColor}40` : 'none',
-            }}
-          >
-            {ticketLoad
-              ? <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-                  <span style={{ color: accentColor, animation: 'pulseGlow 1s infinite' }}>■</span>
-                  CALCUL EN COURS...
-                </span>
-              : getButtonLabel()
-            }
+          <button onClick={generate} disabled={!canGen || loading} style={{
+            width: '100%', padding: '14px',
+            background: canGen ? 'var(--accent-green)' : 'var(--bg-elevated)',
+            border: `1px solid ${canGen ? 'var(--accent-green)' : 'var(--border)'}`,
+            borderRadius: '6px',
+            color: canGen ? '#06060e' : 'var(--text-muted)',
+            fontFamily: 'var(--font-mono)', fontSize: '11px',
+            fontWeight: 700, letterSpacing: '0.14em',
+            cursor: canGen ? 'pointer' : 'not-allowed',
+            transition: 'all 0.2s',
+            boxShadow: canGen ? '0 0 20px rgba(0,255,136,0.2)' : 'none',
+          }}>
+            {loading ? '⏳ GÉNÉRATION...' : canGen ? `⚡ GÉNÉRER LE TICKET` : `SÉLECTIONNE ${mode.includes('combined') ? '2+' : '1+'} MATCH${mode.includes('combined') ? 'S' : ''}`}
           </button>
 
-          {/* Bouton "Voir le dernier ticket" si ticket dispo */}
-          {ticket && !showModal && (
-            <button
-              onClick={() => setShowModal(true)}
-              style={{
-                width: '100%', padding: '10px', marginTop: '8px', borderRadius: '4px',
-                background: 'transparent',
-                border: `1px solid ${accentColor}`,
-                color: accentColor,
-                fontFamily: 'var(--font-mono)', fontSize: '10px', fontWeight: 700,
-                letterSpacing: '0.1em', textTransform: 'uppercase',
-                cursor: 'pointer', transition: 'all 0.15s ease', boxSizing: 'border-box',
-              }}
-            >
-              VOIR LE DERNIER TICKET →
-            </button>
-          )}
-
-          {error && (
-            <div style={{ marginTop: '10px', padding: '10px 14px', border: '1px solid rgba(255,68,85,0.3)', background: 'rgba(255,68,85,0.05)', borderRadius: '3px', fontFamily: 'var(--font-mono)', fontSize: '11px', color: '#ff5566' }}>
-              ⚠ {error}
+          {canGen && (
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '8px', color: 'var(--text-muted)', textAlign: 'center', letterSpacing: '0.06em', lineHeight: 1.5 }}>
+              Mode : {selMode?.icon} {selMode?.label}
             </div>
           )}
         </div>
-      </div>
-
-      {/* ── Modal résultat ticket ── */}
-      {showModal && ticket && (
-        <TicketModal
-          ticket={ticket}
-          allMatches={matches}
-          isHot={isHot}
-          accentColor={accentColor}
-          onClose={() => setShowModal(false)}
-          onRegenerate={() => { setShowModal(false); handleGenerate() }}
-        />
-      )}
-    </div>
-  )
-}
-
-/* ══════════════════════════════════════════
-   SELECTABLE MATCH ROW
-══════════════════════════════════════════ */
-function SelectableMatch({ match, selected, onToggle, accentColor }) {
-  const home     = match.home_team?.short_name || match.home_team?.name || '—'
-  const away     = match.away_team?.short_name || match.away_team?.name || '—'
-  const compName = LEAGUE_NAMES[match.competition?.code] || match.competition?.code || '—'
-
-  return (
-    <div
-      onClick={onToggle}
-      className={`selectable-match ${selected ? 'selected' : ''}`}
-      style={{
-        padding: '10px 14px', cursor: 'pointer',
-        borderColor: selected ? `${accentColor}55` : undefined,
-        background: selected ? `${accentColor}08` : undefined,
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-
-        {/* Checkbox */}
-        <div style={{
-          width: '16px', height: '16px', flexShrink: 0,
-          border: `1.5px solid ${selected ? accentColor : 'var(--border-bright)'}`,
-          borderRadius: '2px',
-          background: selected ? accentColor : 'transparent',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          transition: 'all 0.15s ease',
-        }}>
-          {selected && <span style={{ color: '#06060e', fontSize: '10px', fontWeight: 900, lineHeight: 1 }}>✓</span>}
-        </div>
-
-        {/* Contenu central */}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          {/* Compétition */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '5px' }}>
-            {match.competition?.crest_url && (
-              <img src={match.competition.crest_url} alt="" width={11} height={11}
-                style={{ objectFit: 'contain', opacity: 0.7, flexShrink: 0 }}
-                onError={(e) => { e.target.style.display = 'none' }}
-              />
-            )}
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '9px', color: 'var(--text-muted)', letterSpacing: '0.06em' }}>
-              {compName}
-            </span>
-          </div>
-          {/* Équipes */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-            <TeamRow team={match.home_team} name={home} size={15} color="var(--text-primary)" />
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '8px', color: 'var(--text-muted)', flexShrink: 0 }}>vs</span>
-              <TeamRow team={match.away_team} name={away} size={15} color="var(--text-secondary)" />
-            </div>
-          </div>
-        </div>
-
-        {/* Date */}
-        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '9px', color: 'var(--text-muted)', flexShrink: 0, whiteSpace: 'nowrap' }}>
-          {fmtShortDate(match.match_date)}
-        </span>
       </div>
     </div>
   )
 }
 
-function TeamRow({ team, name, size, color }) {
+function CompChip({ label, logo, active, onClick }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden' }}>
-      {team?.crest_url && (
-        <img src={team.crest_url} alt="" width={size} height={size}
-          style={{ objectFit: 'contain', flexShrink: 0 }}
-          onError={(e) => { e.target.style.display = 'none' }}
-        />
-      )}
-      <span style={{ fontFamily: 'var(--font-display)', fontSize: '14px', color, letterSpacing: '0.03em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-        {name}
-      </span>
-    </div>
+    <button onClick={onClick} style={{
+      display: 'flex', alignItems: 'center', gap: '5px',
+      padding: '4px 10px', borderRadius: '20px', cursor: 'pointer',
+      background: active ? 'rgba(0,255,136,0.12)' : 'var(--bg-surface)',
+      border: active ? '1px solid rgba(0,255,136,0.4)' : '1px solid var(--border)',
+      color: active ? 'var(--accent-green)' : 'var(--text-muted)',
+      fontFamily: 'var(--font-mono)', fontSize: '9px',
+      fontWeight: active ? 700 : 400, letterSpacing: '0.08em',
+      transition: 'all 0.15s', whiteSpace: 'nowrap',
+    }}>
+      {logo && <img src={logo} alt="" width={12} height={12} style={{ objectFit: 'contain' }} onError={e => e.target.style.display = 'none'} />}
+      {label}
+    </button>
   )
 }
 
-/* ══════════════════════════════════════════
-   MODAL RÉSULTAT TICKET
-══════════════════════════════════════════ */
-function TicketModal({ ticket, allMatches, isHot, accentColor, onClose, onRegenerate }) {
-  const isSimple = ticket.mode === 'simple'
-
-  const byMatch = ticket.selections?.reduce((acc, sel) => {
-    if (!acc[sel.match_id]) acc[sel.match_id] = []
-    acc[sel.match_id].push(sel)
-    return acc
-  }, {})
-
+function ActionBtn({ children, onClick, danger }) {
   return (
-    /* Overlay */
-    <div
-      onClick={onClose}
-      style={{
-        position: 'fixed', inset: 0, zIndex: 2000,
-        background: 'rgba(6,6,14,0.88)',
-        backdropFilter: 'blur(6px)',
-        display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
-        animation: 'fadeIn 0.2s ease-out',
-      }}
-    >
-      {/* Panel — stoppe la propagation du clic */}
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          width: '100%', maxWidth: '560px',
-          maxHeight: '90vh', overflowY: 'auto',
-          background: 'var(--bg-surface)',
-          border: `1px solid ${accentColor}44`,
-          borderBottom: 'none',
-          borderRadius: '12px 12px 0 0',
-          animation: 'fadeInUp 0.3s ease-out',
-          boxShadow: `0 -8px 40px ${accentColor}20`,
-        }}
-      >
-        {/* Handle de drag */}
-        <div style={{ display: 'flex', justifyContent: 'center', padding: '12px 0 4px' }}>
-          <div style={{ width: '40px', height: '4px', borderRadius: '2px', background: 'var(--border-bright)' }} />
-        </div>
-
-        {/* Header modal */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 20px 16px' }}>
-          <div>
-            <div style={{ fontFamily: 'var(--font-display)', fontSize: '22px', color: accentColor, letterSpacing: '0.05em' }}>
-              {isHot ? '🔥 DANGER ZONE' : isSimple ? 'SIMPLE' : 'SMART TICKET'}
-            </div>
-            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '9px', color: 'var(--text-muted)', letterSpacing: '0.1em', marginTop: '2px' }}>
-              TICKET GÉNÉRÉ
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            style={{
-              width: '32px', height: '32px', borderRadius: '50%',
-              background: 'var(--bg-elevated)', border: '1px solid var(--border)',
-              color: 'var(--text-secondary)', fontSize: '16px', cursor: 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}
-          >✕</button>
-        </div>
-
-        {/* Contenu ticket */}
-        <div style={{ padding: '0 20px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          {Object.entries(byMatch || {}).map(([matchId, sels]) => {
-            const match = allMatches.find((m) => m.id === parseInt(matchId))
-            const home  = match?.home_team?.short_name || match?.home_team?.name || '?'
-            const away  = match?.away_team?.short_name || match?.away_team?.name || '?'
-            return (
-              <div key={matchId} style={{ background: 'var(--bg-elevated)', borderRadius: '6px', overflow: 'hidden', border: '1px solid var(--border)' }}>
-                {/* Header match */}
-                <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                  {match?.home_team?.crest_url && <img src={match.home_team.crest_url} alt="" width={16} height={16} style={{ objectFit: 'contain' }} onError={(e) => { e.target.style.display = 'none' }} />}
-                  <span style={{ fontFamily: 'var(--font-display)', fontSize: '13px', color: 'var(--text-primary)', letterSpacing: '0.03em' }}>{home}</span>
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '9px', color: 'var(--text-muted)' }}>vs</span>
-                  <span style={{ fontFamily: 'var(--font-display)', fontSize: '13px', color: 'var(--text-secondary)', letterSpacing: '0.03em' }}>{away}</span>
-                  {match?.away_team?.crest_url && <img src={match.away_team.crest_url} alt="" width={16} height={16} style={{ objectFit: 'contain' }} onError={(e) => { e.target.style.display = 'none' }} />}
-                </div>
-                {/* Paris */}
-                {sels.map((sel, i) => {
-                  const pct   = Math.round(sel.probability * 100)
-                  const color = probaColor(sel.probability, isHot)
-                  return (
-                    <div key={i} style={{
-                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                      padding: '12px 14px', gap: '12px',
-                      borderLeft: `3px solid ${color}`,
-                      borderBottom: i < sels.length - 1 ? '1px solid var(--border)' : 'none',
-                    }}>
-                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-muted)', letterSpacing: '0.06em', flex: 1 }}>
-                        {sel.label}
-                      </span>
-                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '20px', fontWeight: 700, color, textShadow: `0 0 10px ${color}55`, flexShrink: 0 }}>
-                        {pct}%
-                      </span>
-                    </div>
-                  )
-                })}
-              </div>
-            )
-          })}
-        </div>
-
-        {/* Warning corrélation */}
-        {ticket.correlated_warning && (
-          <div style={{ margin: '12px 20px 0', padding: '10px 14px', background: 'rgba(255,204,0,0.07)', border: '1px solid rgba(255,204,0,0.25)', borderRadius: '6px', fontFamily: 'var(--font-mono)', fontSize: '9px', color: 'var(--accent-amber)', lineHeight: 1.6 }}>
-            ⚠ {ticket.correlated_warning}
-          </div>
-        )}
-
-        {/* Stats ticket */}
-        <div style={{ margin: '16px 20px', padding: '16px', background: 'var(--bg-elevated)', borderRadius: '8px', border: `1px solid ${accentColor}22`, display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          {!isSimple && (
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', color: 'var(--text-muted)', letterSpacing: '0.1em' }}>
-                {isHot ? 'PROBABILITÉ GLOBALE' : 'PROBABILITÉ COMBINÉE'}
-              </span>
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '28px', fontWeight: 700, color: accentColor, textShadow: `0 0 14px ${accentColor}66` }}>
-                {Math.round((ticket.combined_proba ?? 0) * 100)}%
-              </span>
-            </div>
-          )}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', color: 'var(--text-muted)', letterSpacing: '0.1em' }}>INDICE DE CONFIANCE</span>
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '22px', fontWeight: 600, color: 'var(--accent-cyan)' }}>
-              {ticket.confidence_score}/100
-            </span>
-          </div>
-        </div>
-
-        {/* Avertissement danger zone */}
-        {isHot && (
-          <div style={{ margin: '0 20px', padding: '12px 14px', background: 'rgba(255,107,53,0.08)', border: '1px solid rgba(255,107,53,0.2)', borderRadius: '6px', fontFamily: 'var(--font-mono)', fontSize: '9px', color: '#ff6b35', lineHeight: 1.7 }}>
-            🔥 PARIS À HAUTE VALEUR — Risque élevé · Potentiel de gain fort · Jouez responsablement
-          </div>
-        )}
-
-        {/* Disclaimer */}
-        {ticket.disclaimer && (
-          <div style={{ margin: '12px 20px 0', padding: '10px 14px', fontFamily: 'var(--font-mono)', fontSize: '9px', color: 'var(--text-muted)', lineHeight: 1.7, borderTop: '1px solid var(--border)' }}>
-            ⚠ {ticket.disclaimer}
-          </div>
-        )}
-
-        {/* Actions */}
-        <div style={{ padding: '16px 20px 28px', display: 'flex', gap: '10px' }}>
-          <button
-            onClick={onRegenerate}
-            style={{
-              flex: 1, padding: '12px',
-              background: `${accentColor}15`,
-              border: `1px solid ${accentColor}`,
-              borderRadius: '6px',
-              color: accentColor,
-              fontFamily: 'var(--font-mono)', fontSize: '10px', fontWeight: 700,
-              letterSpacing: '0.1em', cursor: 'pointer', transition: 'all 0.15s ease',
-            }}
-          >
-            ↻ RÉGÉNÉRER
-          </button>
-          <button
-            onClick={onClose}
-            style={{
-              flex: 1, padding: '12px',
-              background: 'transparent',
-              border: '1px solid var(--border)',
-              borderRadius: '6px',
-              color: 'var(--text-secondary)',
-              fontFamily: 'var(--font-mono)', fontSize: '10px', fontWeight: 700,
-              letterSpacing: '0.1em', cursor: 'pointer', transition: 'all 0.15s ease',
-            }}
-          >
-            FERMER
-          </button>
-        </div>
-      </div>
-    </div>
+    <button onClick={onClick} style={{
+      padding: '4px 10px', background: 'transparent', cursor: 'pointer',
+      border: `1px solid ${danger ? 'rgba(255,68,85,0.3)' : 'var(--border)'}`,
+      borderRadius: '4px',
+      color: danger ? '#ff5566' : 'var(--text-muted)',
+      fontFamily: 'var(--font-mono)', fontSize: '9px', letterSpacing: '0.08em',
+      transition: 'all 0.15s',
+    }}>
+      {children}
+    </button>
   )
+}
+
+function Tag({ children, color }) {
+  return (
+    <span style={{
+      fontFamily: 'var(--font-mono)', fontSize: '8px', fontWeight: 600,
+      padding: '2px 6px', borderRadius: '3px',
+      background: color + '18', color, border: `1px solid ${color}30`,
+      letterSpacing: '0.06em',
+    }}>
+      {children}
+    </span>
+  )
+}
+
+function formatDateLabel(dateStr) {
+  const today    = new Date(); today.setHours(0,0,0,0)
+  const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1)
+  const d        = new Date(dateStr)
+  if (d.toDateString() === today.toDateString())    return 'AUJOURD\'HUI'
+  if (d.toDateString() === tomorrow.toDateString()) return 'DEMAIN'
+  return d.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' }).toUpperCase()
 }

@@ -161,17 +161,58 @@ def _compute_team_stats(
     )
 
 
+def _get_team_ids(db: Session, team_id: int) -> list[int]:
+    """Retourne tous les IDs correspondant à la même équipe (doublons nom/api_football_id)."""
+    from app.models.team import Team
+    from sqlalchemy import text
+
+    team = db.get(Team, team_id)
+    if not team:
+        return [team_id]
+
+    ids = set([team_id])
+
+    # 1. Même api_football_id
+    if team.api_football_id:
+        rows = db.execute(
+            text("SELECT id FROM teams WHERE api_football_id = :aid"),
+            {"aid": team.api_football_id}
+        ).fetchall()
+        for r in rows:
+            ids.add(r[0])
+
+    # 2. Nom similaire (normalise : retire FC, AS, US, SC, etc.)
+    import re
+    def normalize(n: str) -> str:
+        n = n.lower()
+        for prefix in [r"^fc\s+", r"^as\s+", r"^us\s+", r"^sc\s+", r"^ac\s+", r"^rc\s+", r"^cd\s+", r"^rcd\s+"]:
+            n = re.sub(prefix, "", n)
+        return n.strip()
+
+    base = normalize(team.name)
+    all_teams = db.execute(text("SELECT id, name FROM teams")).fetchall()
+    for t in all_teams:
+        if normalize(t[1]) == base:
+            ids.add(t[0])
+
+    return list(ids)
+
+
 def _compute_h2h(
     db: Session,
     home_team_id: int,
     away_team_id: int,
     exclude_match_id: Optional[int],
 ) -> H2HResult:
+    # Récupère tous les IDs équivalents (doublons historiques)
+    home_ids = _get_team_ids(db, home_team_id)
+    away_ids = _get_team_ids(db, away_team_id)
+
     conditions = [
         Match.status == "FINISHED",
         or_(
-            and_(Match.home_team_id == home_team_id, Match.away_team_id == away_team_id),
-            and_(Match.home_team_id == away_team_id, Match.away_team_id == home_team_id),
+            and_(Match.home_team_id.in_(home_ids), Match.away_team_id.in_(away_ids)),
+            and_(Match.home_team_id.in_(away_ids), Match.away_team_id.in_(home_ids)),
         ),
     ]
     if exclude_match_id is not None:
