@@ -14,6 +14,7 @@ from app.api.routes import (
     lineups_router,
     live_router,
     odds_router,
+    value_bets_router,
     matches_router,
     predictions_router,
     smart_ticket_router,
@@ -98,6 +99,7 @@ app.include_router(enrichment_router,   prefix=API_PREFIX)
 app.include_router(injuries_router,     prefix=API_PREFIX)
 app.include_router(lineups_router,      prefix=API_PREFIX)
 app.include_router(live_router,         prefix=API_PREFIX)
+app.include_router(value_bets_router,   prefix=API_PREFIX)
 app.include_router(odds_router,         prefix=API_PREFIX)
 
 # ---------------------------------------------------------------------------
