@@ -54,7 +54,7 @@ export default function MatchDetail() {
       <MatchHeader match={match} />
 
       {isFinished ? (
-        <FinishedMatchView match={match} />
+        <FinishedMatchView match={match} matchStats={match.match_stats || []} />
       ) : (
         <UpcomingMatchView
           stats={stats} statsLoad={statsLoad}
@@ -72,7 +72,7 @@ export default function MatchDetail() {
    Affiche UNIQUEMENT les données de ce match :
    score final + résultat domicile/extérieur
 ══════════════════════════════════════════ */
-function FinishedMatchView({ match }) {
+function FinishedMatchView({ match, matchStats }) {
   const homeScore = match.home_score ?? 0
   const awayScore = match.away_score ?? 0
   const homeWon   = homeScore > awayScore
@@ -219,24 +219,19 @@ function FinishedMatchView({ match }) {
           {/* ── Séparateur ── */}
           <div style={{ height: '1px', background: 'var(--border)', marginBottom: '24px' }} />
 
-          {/* ── Message enrichissement futur ── */}
-          <div style={{
-            padding: '14px 16px',
-            background: 'var(--bg-elevated)',
-            border: '1px dashed var(--border-bright)',
-            borderRadius: '3px',
-            display: 'flex', alignItems: 'center', gap: '10px',
-          }}>
-            <span style={{ color: 'var(--text-muted)', fontSize: '14px' }}>📊</span>
-            <span style={{
-              fontFamily: 'var(--font-mono)', fontSize: '9px',
-              color: 'var(--text-muted)', letterSpacing: '0.08em', lineHeight: 1.6,
-            }}>
-              STATISTIQUES DÉTAILLÉES À VENIR — Possession · Tirs · Corners · Cartons · Buteurs
-              <br />
-              <span style={{ color: 'var(--accent-green)', opacity: 0.6 }}>Phase 3 · Intégration sources enrichies</span>
-            </span>
-          </div>
+          {matchStats.length === 2
+            ? <MatchStatsPanel stats={matchStats} match={match} />
+            : <div style={{
+                padding: '14px 16px',
+                background: 'var(--bg-elevated)',
+                border: '1px dashed var(--border)',
+                borderRadius: '3px',
+                fontFamily: 'var(--font-mono)', fontSize: '9px',
+                color: 'var(--text-muted)', letterSpacing: '0.08em',
+              }}>
+                STATISTIQUES NON DISPONIBLES — Match non enrichi
+              </div>
+          }
 
         </div>
       </div>
@@ -559,6 +554,186 @@ function PredictionSections({ prediction }) {
           ⚠ {prediction.disclaimer}
         </div>
       )}
+    </div>
+  )
+}
+
+
+/* ══════════════════════════════════════════
+   STATS MATCH ENRICHIES (Phase 3D)
+   Données issues de api-football via enrichment_service
+══════════════════════════════════════════ */
+function MatchStatsPanel({ stats, match }) {
+  const home = stats.find(s => s.side === 'HOME') || {}
+  const away = stats.find(s => s.side === 'AWAY') || {}
+
+  // Barres de comparaison home vs away
+  const rows = [
+    { label: 'POSSESSION',     h: home.ball_possession,   a: away.ball_possession,   suffix: '%',  fmt: v => v?.toFixed(0) ?? '—' },
+    { label: 'xG',             h: home.expected_goals,    a: away.expected_goals,    suffix: '',   fmt: v => v?.toFixed(2) ?? '—', highlight: true },
+    { label: 'TIRS',           h: home.shots_total,       a: away.shots_total,       suffix: '',   fmt: v => v ?? '—' },
+    { label: 'TIRS CADRÉS',    h: home.shots_on_goal,     a: away.shots_on_goal,     suffix: '',   fmt: v => v ?? '—' },
+    { label: 'PASSES',         h: home.passes_total,      a: away.passes_total,      suffix: '',   fmt: v => v ?? '—' },
+    { label: 'PASSES PRÉCISES',h: home.passes_accurate,   a: away.passes_accurate,   suffix: '',   fmt: v => v ?? '—' },
+    { label: 'PRÉCISION PASS.',h: home.passes_pct,        a: away.passes_pct,        suffix: '%',  fmt: v => v?.toFixed(0) ?? '—' },
+    { label: 'CORNERS',        h: home.corner_kicks,      a: away.corner_kicks,      suffix: '',   fmt: v => v ?? '—' },
+    { label: 'FAUTES',         h: home.fouls,             a: away.fouls,             suffix: '',   fmt: v => v ?? '—', inverse: true },
+    { label: 'HORS-JEU',       h: home.offsides,          a: away.offsides,          suffix: '',   fmt: v => v ?? '—' },
+    { label: 'ARRÊTS GARDIEN', h: home.goalkeeper_saves,  a: away.goalkeeper_saves,  suffix: '',   fmt: v => v ?? '—' },
+  ]
+
+  const homeColor = '#00cc88'
+  const awayColor = '#ff6b35'
+
+  return (
+    <div style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+
+      {/* ── xG highlight card ── */}
+      {(home.expected_goals != null || away.expected_goals != null) && (
+        <div style={{
+          background: 'var(--bg-surface)',
+          border: '1px solid var(--border)',
+          borderRadius: '4px',
+          padding: '20px 24px',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+            <span style={{ color: 'var(--accent-green)', fontSize: '7px' }}>◆</span>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', fontWeight: 600, letterSpacing: '0.16em', color: 'var(--text-muted)' }}>
+              EXPECTED GOALS
+            </span>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', gap: '16px' }}>
+            {/* Home xG */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <span style={{ fontFamily: 'var(--font-display)', fontSize: '13px', color: homeColor }}>
+                {match.home_team?.short_name || match.home_team?.name}
+              </span>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '36px', fontWeight: 700, color: homeColor, lineHeight: 1, textShadow: `0 0 20px ${homeColor}44` }}>
+                {home.expected_goals?.toFixed(2) ?? '—'}
+              </span>
+            </div>
+            {/* Séparateur */}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '9px', color: 'var(--text-muted)', letterSpacing: '0.1em' }}>xG</span>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '18px', color: 'var(--text-muted)' }}>—</span>
+            </div>
+            {/* Away xG */}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
+              <span style={{ fontFamily: 'var(--font-display)', fontSize: '13px', color: awayColor, textAlign: 'right' }}>
+                {match.away_team?.short_name || match.away_team?.name}
+              </span>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '36px', fontWeight: 700, color: awayColor, lineHeight: 1, textShadow: `0 0 20px ${awayColor}44` }}>
+                {away.expected_goals?.toFixed(2) ?? '—'}
+              </span>
+            </div>
+          </div>
+          {/* Barre xG relative */}
+          {home.expected_goals != null && away.expected_goals != null && (() => {
+            const total = home.expected_goals + away.expected_goals || 1
+            const homePct = (home.expected_goals / total) * 100
+            return (
+              <div style={{ marginTop: '14px', height: '6px', borderRadius: '3px', overflow: 'hidden', display: 'flex', gap: '2px' }}>
+                <div style={{ flex: homePct, background: homeColor, borderRadius: '3px 0 0 3px', transition: 'flex 0.8s ease' }} />
+                <div style={{ flex: 100 - homePct, background: awayColor, borderRadius: '0 3px 3px 0', transition: 'flex 0.8s ease' }} />
+              </div>
+            )
+          })()}
+        </div>
+      )}
+
+      {/* ── Stats comparaison complète ── */}
+      <div style={{
+        background: 'var(--bg-surface)',
+        border: '1px solid var(--border)',
+        borderRadius: '4px',
+        padding: '20px 24px',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '20px' }}>
+          <span style={{ color: 'var(--accent-green)', fontSize: '7px' }}>◆</span>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', fontWeight: 600, letterSpacing: '0.16em', color: 'var(--text-muted)' }}>
+            STATISTIQUES DU MATCH
+          </span>
+        </div>
+
+        {/* En-tête équipes */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: '8px', marginBottom: '16px', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {match.home_team?.crest_url && (
+              <img src={match.home_team.crest_url} alt="" width={20} height={20}
+                style={{ objectFit: 'contain' }} onError={e => e.target.style.display = 'none'} />
+            )}
+            <span style={{ fontFamily: 'var(--font-display)', fontSize: '13px', color: homeColor }}>
+              {match.home_team?.short_name || match.home_team?.name}
+            </span>
+          </div>
+          <div />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'flex-end' }}>
+            <span style={{ fontFamily: 'var(--font-display)', fontSize: '13px', color: awayColor, textAlign: 'right' }}>
+              {match.away_team?.short_name || match.away_team?.name}
+            </span>
+            {match.away_team?.crest_url && (
+              <img src={match.away_team.crest_url} alt="" width={20} height={20}
+                style={{ objectFit: 'contain' }} onError={e => e.target.style.display = 'none'} />
+            )}
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          {rows.map(({ label, h, a, suffix, fmt, inverse }) => {
+            const hNum = typeof h === 'number' ? h : null
+            const aNum = typeof a === 'number' ? a : null
+            const max = Math.max(hNum ?? 0, aNum ?? 0) || 1
+            const hPct = hNum != null ? Math.min((hNum / max) * 100, 100) : 0
+            const aPct = aNum != null ? Math.min((aNum / max) * 100, 100) : 0
+            const hBetter = inverse ? hNum <= aNum : hNum >= aNum
+            const hColor = hNum === aNum ? 'var(--text-primary)' : hBetter ? homeColor : 'var(--text-muted)'
+            const aColor = hNum === aNum ? 'var(--text-primary)' : !hBetter ? awayColor : 'var(--text-muted)'
+            return (
+              <div key={label}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: '8px', alignItems: 'center', marginBottom: '3px' }}>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '13px', fontWeight: 700, color: hColor }}>
+                    {fmt(h)}{suffix}
+                  </span>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '8px', color: 'var(--text-muted)', letterSpacing: '0.1em', textAlign: 'center', minWidth: '110px' }}>
+                    {label}
+                  </span>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '13px', fontWeight: 700, color: aColor, textAlign: 'right' }}>
+                    {fmt(a)}{suffix}
+                  </span>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 4px 1fr', gap: '3px' }}>
+                  <div style={{ height: '2px', background: 'var(--border)', borderRadius: '2px', overflow: 'hidden', display: 'flex', justifyContent: 'flex-end' }}>
+                    <div style={{ height: '100%', width: `${hPct}%`, background: hColor === 'var(--text-muted)' ? 'var(--border)' : hColor, borderRadius: '2px' }} />
+                  </div>
+                  <div />
+                  <div style={{ height: '2px', background: 'var(--border)', borderRadius: '2px', overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${aPct}%`, background: aColor === 'var(--text-muted)' ? 'var(--border)' : aColor, borderRadius: '2px' }} />
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Cartons */}
+        {(home.yellow_cards != null || away.yellow_cards != null) && (
+          <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'center', gap: '32px' }}>
+            {[
+              { label: 'CARTONS JAUNES', hVal: home.yellow_cards ?? 0, aVal: away.yellow_cards ?? 0, color: '#ffcc00' },
+              { label: 'CARTONS ROUGES', hVal: home.red_cards ?? 0,    aVal: away.red_cards ?? 0,    color: '#ff4455' },
+            ].map(({ label, hVal, aVal, color }) => (
+              <div key={label} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '8px', color: 'var(--text-muted)', letterSpacing: '0.1em' }}>{label}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '20px', fontWeight: 700, color: hVal > aVal ? color : 'var(--text-muted)' }}>{hVal}</span>
+                  <div style={{ width: '20px', height: '28px', background: color, borderRadius: '2px', opacity: 0.8 }} />
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '20px', fontWeight: 700, color: aVal > hVal ? color : 'var(--text-muted)' }}>{aVal}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

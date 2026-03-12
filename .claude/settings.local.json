@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m alembic init alembic)",
+      "Bash(python -c \":*)",
+      "Bash(python -m py_compile backend/app/services/football_api.py)",
+      "Bash(python -m py_compile ml/pipelines/ingest.py)",
+      "Bash(python -m py_compile ml/pipelines/preprocess.py)"
+    ]
+  }
+}
