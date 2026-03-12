@@ -371,3 +371,45 @@ body::after {
   /* Noms équipes SmartTicket */
   .match-team-name { font-size: 13px !important; }
 }
+
+/* ══════════════════════════════════════════
+   LAYOUT SIDEBAR
+══════════════════════════════════════════ */
+/* Desktop : sidebar visible, contenu décalé */
+.sidebar {
+  transform: translateX(0) !important;
+}
+.main-with-sidebar {
+  margin-left: 240px;
+}
+.top-navbar {
+  left: 240px;
+}
+.hamburger-btn {
+  display: none !important;
+}
+.navbar-logo-mobile {
+  display: none !important;
+}
+
+/* Tablette / Mobile : sidebar en drawer */
+@media (max-width: 900px) {
+  .sidebar {
+    transform: translateX(-100%) !important;
+  }
+  .sidebar[style*="translateX(0)"] {
+    transform: translateX(0) !important;
+  }
+  .main-with-sidebar {
+    margin-left: 0 !important;
+  }
+  .top-navbar {
+    left: 0 !important;
+  }
+  .hamburger-btn {
+    display: flex !important;
+  }
+  .navbar-logo-mobile {
+    display: block !important;
+  }
+}

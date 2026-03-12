@@ -9,6 +9,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import (
+    competitions_router,
     enrichment_router,
     injuries_router,
     lineups_router,
@@ -98,6 +99,7 @@ app.include_router(stats_router,        prefix=API_PREFIX)
 app.include_router(enrichment_router,   prefix=API_PREFIX)
 app.include_router(injuries_router,     prefix=API_PREFIX)
 app.include_router(lineups_router,      prefix=API_PREFIX)
+app.include_router(competitions_router,  prefix=API_PREFIX)
 app.include_router(live_router,         prefix=API_PREFIX)
 app.include_router(value_bets_router,   prefix=API_PREFIX)
 app.include_router(odds_router,         prefix=API_PREFIX)
