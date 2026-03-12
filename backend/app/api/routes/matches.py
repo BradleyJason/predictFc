@@ -4,11 +4,12 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.core.database import get_db
 from app.models.match import Match
-from app.schemas.match import MatchListOut, MatchOut
+from app.models.match_stat import MatchStat
+from app.schemas.match import MatchListItemOut, MatchListOut, MatchOut
 
 router = APIRouter(tags=["matches"])
 
@@ -50,7 +51,7 @@ def list_matches(
         select(func.count()).select_from(base_query.subquery())
     ) or 0
 
-    matches = db.scalars(base_query.offset(skip).limit(limit)).all()
+    matches = db.execute(base_query.offset(skip).limit(limit)).unique().scalars().all()
 
     return MatchListOut(
         matches=list(matches),
@@ -69,6 +70,7 @@ def get_match(match_id: int, db: Session = Depends(get_db)) -> Match:
             joinedload(Match.competition),
             joinedload(Match.home_team),
             joinedload(Match.away_team),
+            selectinload(Match.match_stats),
         )
         .where(Match.id == match_id)
     )

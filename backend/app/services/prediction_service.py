@@ -9,6 +9,7 @@ Stratégie de cache :
   3. invalidate_model() supprime le .pkl → force ré-entraînement
 """
 import logging
+import time
 import pickle
 import sys
 import threading
@@ -24,10 +25,21 @@ from app.models.match import Match
 from app.models.match_stat import MatchStat
 from app.models.prediction import Prediction
 from app.services.understat_client import understat_client
+
+# XGBoost (Phase 3E)
+_XGB_MODEL = None
+_XGB_PKL = Path(__file__).parent.parent.parent.parent / "ml" / "model_cache" / "xgb_model.pkl"
+
 from app.models.competition import Competition
 from app.services.understat_client import understat_client
+
+# XGBoost (Phase 3E)
+
 from app.models.competition import Competition
 from app.services.understat_client import understat_client
+
+# XGBoost (Phase 3E)
+
 
 if TYPE_CHECKING:
     from models.poisson_model import PoissonModel
@@ -35,7 +47,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _ML_PATH = Path(__file__).resolve().parent.parent.parent.parent / "ml"
-_MODEL_VERSION = "poisson_dixon_coles_v2_temporal"
+_MODEL_VERSION = "dixon_coles_xgboost_ensemble_v1"
 
 # Chemin de sauvegarde du modèle sérialisé
 _MODEL_PKL = Path(__file__).resolve().parent.parent.parent / "model_cache" / "model.pkl"
@@ -273,6 +285,102 @@ def _compute_form_weights(
     logger.debug("Forme finale dom=%.3f ext=%.3f", fh, fa)
     return fh, fa
 
+
+# ---------------------------------------------------------------------------
+# XGBoost helpers (Phase 3E)
+# ---------------------------------------------------------------------------
+
+def _get_xgb_model():
+    """Singleton XGBoost avec cache pkl 24h."""
+    global _XGB_MODEL
+    if _XGB_MODEL is not None:
+        return _XGB_MODEL
+
+    import sys
+    ml_path = Path(__file__).parent.parent.parent.parent / "ml"
+    if str(ml_path) not in sys.path:
+        sys.path.insert(0, str(ml_path))
+
+    from models.xgboost_model import XGBoostModel
+
+    if _XGB_PKL.exists() and (time.time() - _XGB_PKL.stat().st_mtime) < 86400:
+        try:
+            with open(_XGB_PKL, "rb") as f:
+                _XGB_MODEL = pickle.load(f)
+            logger.info("XGBoost charge depuis pkl.")
+            return _XGB_MODEL
+        except Exception:
+            pass
+
+    logger.info("Entrainement XGBoost...")
+    import pandas as pd
+    features_path = ml_path / "data" / "processed" / "features.parquet"
+    df = pd.read_parquet(features_path)
+    model = XGBoostModel()
+    metrics = model.fit(df)
+    logger.info("XGBoost entraine : %s", metrics)
+
+    _XGB_PKL.parent.mkdir(parents=True, exist_ok=True)
+    with open(_XGB_PKL, "wb") as f:
+        pickle.dump(model, f)
+
+    _XGB_MODEL = model
+    return _XGB_MODEL
+
+
+def _get_team_features_avg5(team_id: int, match_date, db: Session) -> dict:
+    """Calcule les features avg5 depuis la BDD pour le modele XGBoost."""
+    rows = db.execute(
+        select(Match.home_team_id, Match.away_team_id,
+               Match.home_score, Match.away_score)
+        .where(
+            Match.status == "FINISHED",
+            Match.home_score.is_not(None),
+            Match.away_score.is_not(None),
+            Match.match_date < match_date,
+            (Match.home_team_id == team_id) | (Match.away_team_id == team_id),
+        )
+        .order_by(Match.match_date.desc())
+        .limit(5)
+    ).all()
+
+    if not rows:
+        return {"goals_scored_avg5": 1.5, "goals_conceded_avg5": 1.5,
+                "points_avg5": 1.5, "gd_avg5": 0.0, "win_rate5": 0.4}
+
+    goals_scored, goals_conceded, points, wins = [], [], [], []
+    for home_id, away_id, hs, aws in rows:
+        is_home = (home_id == team_id)
+        scored   = hs  if is_home else aws
+        conceded = aws if is_home else hs
+        goals_scored.append(scored)
+        goals_conceded.append(conceded)
+        if scored > conceded:    points.append(3); wins.append(1)
+        elif scored == conceded: points.append(1); wins.append(0)
+        else:                    points.append(0); wins.append(0)
+
+    n = len(rows)
+    return {
+        "goals_scored_avg5":   sum(goals_scored)   / n,
+        "goals_conceded_avg5": sum(goals_conceded)  / n,
+        "points_avg5":         sum(points)          / n,
+        "gd_avg5":             (sum(goals_scored) - sum(goals_conceded)) / n,
+        "win_rate5":           sum(wins)            / n,
+    }
+
+
+def _blend_probas(dc: dict, xgb_pred: dict, w_dc: float = 0.6, w_xgb: float = 0.4) -> dict:
+    """Fusionne les probabilites Dixon-Coles et XGBoost."""
+    hw = w_dc * dc["home_win_proba"] + w_xgb * xgb_pred["home_win"]
+    dr = w_dc * dc["draw_proba"]     + w_xgb * xgb_pred["draw"]
+    aw = w_dc * dc["away_win_proba"] + w_xgb * xgb_pred["away_win"]
+    total = hw + dr + aw
+    return {
+        "home_win_proba": hw / total,
+        "draw_proba":     dr / total,
+        "away_win_proba": aw / total,
+    }
+
 # ---------------------------------------------------------------------------
 # Service principal
 # ---------------------------------------------------------------------------
@@ -325,6 +433,26 @@ class PredictionService:
         raw_preds["form_weight_home"] = form_weight_home
         raw_preds["form_weight_away"] = form_weight_away
 
+
+        # ── Fusion XGBoost (Phase 3E) ────────────────────────────────────
+        try:
+            xgb_model = _get_xgb_model()
+            home_feat = _get_team_features_avg5(match.home_team_id, match.match_date, db)
+            away_feat = _get_team_features_avg5(match.away_team_id, match.match_date, db)
+            xgb_pred  = xgb_model.predict(home_feat, away_feat)
+            blended   = _blend_probas(raw_preds, xgb_pred, w_dc=0.6, w_xgb=0.4)
+            raw_preds["home_win_proba"] = blended["home_win_proba"]
+            raw_preds["draw_proba"]     = blended["draw_proba"]
+            raw_preds["away_win_proba"] = blended["away_win_proba"]
+            raw_preds["xgb_home_win"]   = xgb_pred["home_win"]
+            raw_preds["xgb_draw"]       = xgb_pred["draw"]
+            raw_preds["xgb_away_win"]   = xgb_pred["away_win"]
+            logger.info("XGBoost fusion OK : xgb=(%.2f/%.2f/%.2f) blend=(%.2f/%.2f/%.2f)",
+                xgb_pred["home_win"], xgb_pred["draw"], xgb_pred["away_win"],
+                blended["home_win_proba"], blended["draw_proba"], blended["away_win_proba"])
+        except Exception as exc:
+            logger.warning("XGBoost indisponible, DC seul : %s", exc)
+        # ─────────────────────────────────────────────────────────────────
         db_row_data = predictions_to_db_row(raw_preds)
         confidence = self._compute_confidence(raw_preds, model)
 
