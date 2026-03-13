@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, func
+from sqlalchemy import DateTime, Float, ForeignKey, Integer, JSON, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -46,6 +46,8 @@ class Prediction(Base):
     home_qualify_proba: Mapped[float | None] = mapped_column(Float)
     away_qualify_proba: Mapped[float | None] = mapped_column(Float)
 
+    # --- Score exact détaillé ---
+    top_scores: Mapped[list | None] = mapped_column(JSON, default=list)
     # --- Métadonnées ---
     confidence_score: Mapped[int | None] = mapped_column(Integer)  # 0-100
     created_at: Mapped[datetime] = mapped_column(

@@ -498,6 +498,7 @@ class PredictionService:
             match_id=match_id,
             model_version=_MODEL_VERSION,
             confidence_score=confidence,
+            top_scores=raw_preds.get("top_scores", []),
             **db_row_data,
         )
         db.add(pred)
@@ -524,7 +525,7 @@ class PredictionService:
             "away_draw_proba":      pred.away_draw_proba,
             "home_away_proba":      pred.home_away_proba,
             "confidence_score":     pred.confidence_score,
-            "top_scores":           [],
+            "top_scores":           pred.top_scores or [],
         }
 
     @staticmethod
