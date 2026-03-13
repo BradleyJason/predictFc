@@ -91,14 +91,23 @@ export default function SmartTicket() {
     return grp
   }
 
+  const MODE_MAP = {
+    combined:        'combined',
+    single:          'simple',
+    danger_single:   'hot',
+    danger_combined: 'hot',
+  }
+
   const generate = async () => {
     if (selected.size < 1) return
     setLoading(true); setResult(null)
     try {
-      const r = await generateSmartTicket([...selected], mode)
+      const backendMode = MODE_MAP[mode] || 'combined'
+      const r = await generateSmartTicket([...selected], backendMode)
       setResult(r.data)
-    } catch {
-      setResult({ error: 'Erreur lors de la génération.' })
+    } catch (err) {
+      const detail = err?.response?.data?.detail
+      setResult({ error: detail || 'Erreur lors de la génération.' })
     }
     setLoading(false)
   }
