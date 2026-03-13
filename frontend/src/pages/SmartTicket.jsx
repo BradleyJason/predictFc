@@ -22,19 +22,19 @@ export default function SmartTicket() {
   const [compFilter,setCompFilter]= useState('ALL')
   const [showModal,  setShowModal]  = useState(false)
   const [ticketCache, setTicketCache] = useState({})
+  const [showCompMenu, setShowCompMenu] = useState(false)
   const [comps,     setComps]     = useState([])
 
   useEffect(() => {
     const now  = new Date()
     const to   = new Date(now); to.setDate(now.getDate() + 7)
     getMatches({
-      limit:     60,
+      limit:     200,
       date_from: now.toISOString().split('T')[0],
       date_to:   to.toISOString().split('T')[0],
+      status:    'TIMED',
     }).then(r => {
-      const list = (r.data?.matches || []).filter(m =>
-        m.status === 'SCHEDULED' || m.status === 'TIMED'
-      )
+      const list = (r.data?.matches || [])
       setMatches(list)
 
       // Grouper par date
@@ -153,12 +153,14 @@ export default function SmartTicket() {
         {/* ── Colonne gauche : matchs ── */}
         <div>
           {/* Filtres compétitions */}
-          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '14px' }}>
-            <CompChip label="TOUS" active={compFilter === 'ALL'} onClick={() => setCompFilter('ALL')} />
-            {comps.slice(0, 6).map(c => (
-              <CompChip key={c.id} label={c.name} logo={c.crest_url} active={compFilter === c.id} onClick={() => setCompFilter(c.id)} />
-            ))}
-          </div>
+          <CompDropdown
+            comps={comps}
+            compFilter={compFilter}
+            setCompFilter={setCompFilter}
+            showCompMenu={showCompMenu}
+            setShowCompMenu={setShowCompMenu}
+            filteredCount={filteredMatches().length}
+          />
 
           {/* Barre actions */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
@@ -398,6 +400,112 @@ export default function SmartTicket() {
       />
     )}
     </>
+  )
+}
+
+const COMP_GROUPS = [
+  { key: "europe",         label: "Europe",       icon: "🏆", ids: [16, 45, 46, 47] },
+  { key: "england",        label: "Angleterre",   icon: "🏴", ids: [4, 25, 30, 39, 40] },
+  { key: "spain",          label: "Espagne",      icon: "🇪🇸", ids: [7, 31, 41] },
+  { key: "france",         label: "France",       icon: "🇫🇷", ids: [1, 34, 44] },
+  { key: "germany",        label: "Allemagne",    icon: "🇩🇪", ids: [10, 33, 43] },
+  { key: "italy",          label: "Italie",       icon: "🇮🇹", ids: [13, 32, 42] },
+  { key: "other_leagues",  label: "Autres ligues",icon: "🌍", ids: [27, 26, 28, 29] },
+  { key: "international",  label: "International",icon: "🌐", ids: [48, 49, 50, 51, 52, 53, 54] },
+]
+
+function CompDropdown({ comps, compFilter, setCompFilter, showCompMenu, setShowCompMenu, filteredCount }) {
+  const selectedComp = comps.find(c => c.id === compFilter)
+  const label = compFilter === 'ALL' ? 'TOUTES LES COMPÉTITIONS' : selectedComp?.name?.toUpperCase() || 'TOUTES'
+
+  const getCompsForGroup = (ids) => comps.filter(c => ids.includes(c.id))
+
+  return (
+    <div style={{ position: 'relative', marginBottom: '14px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        {/* Bouton TOUS */}
+        <button onClick={() => { setCompFilter('ALL'); setShowCompMenu(false) }} style={{
+          padding: '5px 12px', borderRadius: '20px', cursor: 'pointer',
+          background: compFilter === 'ALL' ? 'rgba(0,255,136,0.12)' : 'var(--bg-surface)',
+          border: compFilter === 'ALL' ? '1px solid rgba(0,255,136,0.4)' : '1px solid var(--border)',
+          color: compFilter === 'ALL' ? 'var(--accent-green)' : 'var(--text-muted)',
+          fontFamily: 'var(--font-mono)', fontSize: '9px', fontWeight: compFilter === 'ALL' ? 700 : 400,
+          letterSpacing: '0.08em', whiteSpace: 'nowrap',
+        }}>TOUS</button>
+
+        {/* Bouton dropdown compétitions */}
+        <button onClick={() => setShowCompMenu(p => !p)} style={{
+          display: 'flex', alignItems: 'center', gap: '6px',
+          padding: '5px 12px', borderRadius: '20px', cursor: 'pointer',
+          background: compFilter !== 'ALL' ? 'rgba(0,255,136,0.12)' : 'var(--bg-surface)',
+          border: compFilter !== 'ALL' ? '1px solid rgba(0,255,136,0.4)' : '1px solid var(--border)',
+          color: compFilter !== 'ALL' ? 'var(--accent-green)' : 'var(--text-muted)',
+          fontFamily: 'var(--font-mono)', fontSize: '9px',
+          fontWeight: compFilter !== 'ALL' ? 700 : 400,
+          letterSpacing: '0.08em', whiteSpace: 'nowrap',
+          transition: 'all 0.15s',
+        }}>
+          {selectedComp?.crest_url && (
+            <img src={selectedComp.crest_url} alt="" width={14} height={14}
+              style={{ objectFit: 'contain' }}
+              onError={e => e.target.style.display='none'} />
+          )}
+          {label}
+          <span style={{ fontSize: '8px', marginLeft: '2px' }}>{showCompMenu ? '▲' : '▼'}</span>
+        </button>
+      </div>
+
+      {/* Menu déroulant */}
+      {showCompMenu && (
+        <div onClick={e => e.stopPropagation()} style={{
+          position: 'absolute', top: '36px', left: 0, zIndex: 100,
+          background: 'var(--bg-surface)', border: '1px solid var(--border)',
+          borderRadius: '8px', padding: '8px',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+          minWidth: '280px', maxHeight: '420px', overflowY: 'auto',
+        }}>
+          {COMP_GROUPS.map(group => {
+            const groupComps = getCompsForGroup(group.ids)
+            if (groupComps.length === 0) return null
+            return (
+              <div key={group.key} style={{ marginBottom: '8px' }}>
+                {/* Header groupe */}
+                <div style={{
+                  fontFamily: 'var(--font-mono)', fontSize: '8px', letterSpacing: '0.12em',
+                  color: 'var(--text-muted)', padding: '4px 8px 4px',
+                  display: 'flex', alignItems: 'center', gap: '6px',
+                }}>
+                  <span>{group.icon}</span>
+                  {group.label.toUpperCase()}
+                </div>
+                {/* Compétitions du groupe */}
+                {groupComps.map(comp => (
+                  <button key={comp.id} onClick={() => { setCompFilter(comp.id); setShowCompMenu(false) }} style={{
+                    display: 'flex', alignItems: 'center', gap: '8px',
+                    width: '100%', padding: '7px 10px', borderRadius: '5px',
+                    background: compFilter === comp.id ? 'rgba(0,255,136,0.1)' : 'transparent',
+                    border: 'none', cursor: 'pointer', textAlign: 'left',
+                    color: compFilter === comp.id ? 'var(--accent-green)' : 'var(--text-secondary)',
+                    fontFamily: 'var(--font-mono)', fontSize: '10px',
+                    transition: 'background 0.1s',
+                  }}
+                  onMouseEnter={e => { if (compFilter !== comp.id) e.currentTarget.style.background = 'var(--bg-elevated)' }}
+                  onMouseLeave={e => { if (compFilter !== comp.id) e.currentTarget.style.background = 'transparent' }}
+                  >
+                    {comp.crest_url && (
+                      <img src={comp.crest_url} alt="" width={16} height={16}
+                        style={{ objectFit: 'contain', flexShrink: 0 }}
+                        onError={e => e.target.style.display='none'} />
+                    )}
+                    {comp.name}
+                  </button>
+                ))}
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
   )
 }
 
