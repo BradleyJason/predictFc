@@ -763,66 +763,109 @@ function TicketRecommendation({ byMatch, preds, meta, getMatch, seuil, seuilMax 
   if (recs.length === 0) return null
 
   return (
-    <div style={{ margin: '0 24px 16px' }}>
-      <div style={{
-        background: `linear-gradient(135deg, ${meta.color}12, ${meta.color}06)`,
-        border: `1px solid ${meta.color}40`,
-        borderRadius: '8px', overflow: 'hidden',
-      }}>
-        {/* Header */}
-        <div style={{
-          padding: '12px 16px', borderBottom: `1px solid ${meta.color}25`,
-          display: 'flex', alignItems: 'center', gap: '8px',
-        }}>
-          <span style={{ fontSize: '16px' }}>💡</span>
-          <div>
-            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', fontWeight: 700, color: meta.color, letterSpacing: '0.1em' }}>
-              CE QUE JE PARIERAIS
-            </div>
-            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '8px', color: 'var(--text-muted)', marginTop: '1px' }}>
-              Sélection basée sur la cohérence statistique du modèle
-            </div>
-          </div>
+    <div style={{ margin: '0 24px 20px' }}>
+      {/* Titre section */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
+        <div style={{ height: '1px', flex: 1, background: `${meta.color}30` }} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span style={{ fontSize: '14px' }}>💡</span>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '9px', fontWeight: 700, color: meta.color, letterSpacing: '0.15em' }}>
+            CE QUE JE PARIERAIS
+          </span>
         </div>
+        <div style={{ height: '1px', flex: 1, background: `${meta.color}30` }} />
+      </div>
 
-        {/* Recommandations par match */}
-        <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          {recs.map(({ match, rec }, i) => {
-            const home = match?.home_team?.name || '?'
-            const away = match?.away_team?.name || '?'
-            return (
-              <div key={i}>
-                {matchIds.length > 1 && (
-                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: '8px', color: 'var(--text-muted)', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    {match?.home_team?.crest_url && <img src={match.home_team.crest_url} alt="" width={12} height={12} style={{ objectFit: 'contain' }} onError={e => e.target.style.display='none'} />}
-                    {home} vs {away}
-                    {match?.away_team?.crest_url && <img src={match.away_team.crest_url} alt="" width={12} height={12} style={{ objectFit: 'contain' }} onError={e => e.target.style.display='none'} />}
+      <div style={{
+        background: `${meta.color}08`,
+        border: `1px solid ${meta.color}30`,
+        borderRadius: '8px',
+        overflow: 'hidden',
+      }}>
+        {recs.map(({ match, rec }, i) => {
+          const home = match?.home_team?.name || '?'
+          const away = match?.away_team?.name || '?'
+          const mainBet = rec[0]
+          const extraBets = rec.slice(1)
+
+          return (
+            <div key={i} style={{
+              padding: '14px 16px',
+              borderBottom: i < recs.length - 1 ? `1px solid ${meta.color}20` : 'none',
+            }}>
+              {/* Nom du match si plusieurs */}
+              {matchIds.length > 1 && (
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: '6px',
+                  marginBottom: '10px',
+                  fontFamily: 'var(--font-mono)', fontSize: '8px', color: 'var(--text-muted)',
+                  letterSpacing: '0.08em',
+                }}>
+                  {match?.home_team?.crest_url && <img src={match.home_team.crest_url} alt="" width={13} height={13} style={{ objectFit: 'contain' }} onError={e => e.target.style.display='none'} />}
+                  <span>{home}</span>
+                  <span style={{ color: 'var(--border)' }}>vs</span>
+                  <span>{away}</span>
+                  {match?.away_team?.crest_url && <img src={match.away_team.crest_url} alt="" width={13} height={13} style={{ objectFit: 'contain' }} onError={e => e.target.style.display='none'} />}
+                </div>
+              )}
+
+              {/* Pari principal */}
+              <div style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                background: `${meta.color}15`,
+                border: `1px solid ${meta.color}40`,
+                borderRadius: '6px',
+                padding: '12px 14px',
+                marginBottom: extraBets.length > 0 ? '8px' : '0',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <span style={{ fontSize: '14px' }}>⭐</span>
+                  <div>
+                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: '8px', color: meta.color, letterSpacing: '0.1em', marginBottom: '2px' }}>
+                      PARI PRINCIPAL
+                    </div>
+                    <div style={{ fontFamily: 'var(--font-display)', fontSize: '15px', color: 'var(--text-primary)', letterSpacing: '0.04em' }}>
+                      {mainBet.label}
+                    </div>
                   </div>
-                )}
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                  {rec.map((mk, j) => (
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontFamily: 'var(--font-display)', fontSize: '24px', color: meta.color, lineHeight: 1 }}>
+                    {Math.round(mainBet.proba * 100)}%
+                  </div>
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: '7px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                    PROBABILITÉ
+                  </div>
+                </div>
+              </div>
+
+              {/* Paris complémentaires */}
+              {extraBets.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: '7px', color: 'var(--text-muted)', letterSpacing: '0.1em', marginBottom: '2px' }}>
+                    + PEUVENT COMPLÉTER
+                  </div>
+                  {extraBets.map((mk, j) => (
                     <div key={j} style={{
-                      display: 'flex', alignItems: 'center', gap: '8px',
-                      background: j === 0 ? `${meta.color}18` : 'var(--bg-elevated)',
-                      border: `1px solid ${j === 0 ? meta.color + '50' : 'var(--border)'}`,
-                      borderRadius: '6px', padding: '8px 12px',
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      background: 'var(--bg-elevated)',
+                      border: '1px solid var(--border)',
+                      borderRadius: '5px',
+                      padding: '8px 12px',
                     }}>
-                      {j === 0 && <span style={{ fontSize: '12px' }}>⭐</span>}
-                      <div>
-                        <div style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', fontWeight: j === 0 ? 700 : 400, color: j === 0 ? meta.color : 'var(--text-secondary)' }}>
-                          {mk.label}
-                        </div>
-                        <div style={{ fontFamily: 'var(--font-display)', fontSize: '13px', color: j === 0 ? meta.color : 'var(--text-muted)', marginTop: '1px' }}>
-                          {Math.round(mk.proba * 100)}%
-                        </div>
-                      </div>
+                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', color: 'var(--text-secondary)' }}>
+                        {mk.label}
+                      </span>
+                      <span style={{ fontFamily: 'var(--font-display)', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                        {Math.round(mk.proba * 100)}%
+                      </span>
                     </div>
                   ))}
                 </div>
-              </div>
-            )
-          })}
-        </div>
+              )}
+            </div>
+          )
+        })}
       </div>
     </div>
   )
