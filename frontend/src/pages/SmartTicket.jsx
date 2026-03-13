@@ -227,7 +227,7 @@ export default function SmartTicket() {
                           <span style={{ fontFamily: 'var(--font-display)', fontSize: '13px', color: sel ? 'var(--text-primary)' : 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {home}
                           </span>
-                          {m.home_team?.crest_url && <img src={m.home_team.crest_url} alt="" width={20} height={20} style={{ objectFit: 'contain', flexShrink: 0 }} onError={e => e.target.style.display = 'none'} />}
+                          {m.home_team?.crest_url && <img src={m.home_team.crest_url} alt="" width={34} height={34} style={{ objectFit: 'contain', flexShrink: 0 }} onError={e => e.target.style.display = 'none'} />}
                         </div>
 
                         {/* VS + heure */}
@@ -240,7 +240,7 @@ export default function SmartTicket() {
 
                         {/* Équipe extérieur */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '7px', minWidth: 0 }}>
-                          {m.away_team?.crest_url && <img src={m.away_team.crest_url} alt="" width={20} height={20} style={{ objectFit: 'contain', flexShrink: 0 }} onError={e => e.target.style.display = 'none'} />}
+                          {m.away_team?.crest_url && <img src={m.away_team.crest_url} alt="" width={34} height={34} style={{ objectFit: 'contain', flexShrink: 0 }} onError={e => e.target.style.display = 'none'} />}
                           <span style={{ fontFamily: 'var(--font-display)', fontSize: '13px', color: sel ? 'var(--text-primary)' : 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {away}
                           </span>
@@ -248,7 +248,7 @@ export default function SmartTicket() {
 
                         {/* Compétition */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
-                          {m.competition?.crest_url && <img src={m.competition.crest_url} alt="" width={12} height={12} style={{ objectFit: 'contain' }} onError={e => e.target.style.display = 'none'} />}
+                          {m.competition?.crest_url && <img src={m.competition.crest_url} alt="" width={20} height={20} style={{ objectFit: 'contain' }} onError={e => e.target.style.display = 'none'} />}
                           <span style={{ fontFamily: 'var(--font-mono)', fontSize: '8px', color: 'var(--text-muted)', maxWidth: '70px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {m.competition?.name || ''}
                           </span>
