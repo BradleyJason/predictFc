@@ -70,6 +70,15 @@ export default function SmartTicket() {
       } else if (next.size < MAX_SELECTIONS) {
         next.add(id)
       }
+      // Auto-switch mode selon nombre de matchs
+      const newSize = next.size
+      setMode(prevMode => {
+        const isSimple   = prevMode === 'single' || prevMode === 'danger_single'
+        const isCombined = prevMode === 'combined' || prevMode === 'danger_combined'
+        if (isSimple && newSize >= 2) return 'combined'
+        if (isCombined && newSize === 1) return 'single'
+        return prevMode
+      })
       return next
     })
     setResult(null)

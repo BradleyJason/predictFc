@@ -93,6 +93,30 @@ def fetch_live_scores(db: Session) -> dict:
     return {"updated": updated, "live_matches": live_matches}
 
 
+def update_timed_to_inplay(db: Session) -> int:
+    """Passe les matchs TIMED dont l'heure est passée en IN_PLAY localement."""
+    from datetime import timedelta
+    now = datetime.now(timezone.utc)
+    # Matchs TIMED dont l'heure est passée
+    from datetime import timedelta
+    matches = db.execute(
+        select(Match)
+        .where(Match.status.in_(["TIMED", "SCHEDULED"]))
+        .where(Match.match_date <= now)
+    ).scalars().all()
+    updated = 0
+    for m in matches:
+        if m.match_date <= now - timedelta(hours=2, minutes=30):
+            m.status = "FINISHED"
+        else:
+            m.status = "IN_PLAY"
+        updated += 1
+    if updated:
+        db.commit()
+        logger.info("TIMED→IN_PLAY : %d matchs mis a jour", updated)
+    return updated
+
+
 def get_live_matches(db: Session) -> list[Match]:
     """Retourne les matchs actuellement IN_PLAY depuis la BDD."""
     from sqlalchemy.orm import joinedload

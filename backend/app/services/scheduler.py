@@ -241,9 +241,10 @@ def task_update_live_scores() -> None:
     logger.info("[Scheduler] Mise a jour scores live...")
     try:
         from app.core.database import SessionLocal
-        from app.services.live_service import fetch_live_scores
+        from app.services.live_service import fetch_live_scores, update_timed_to_inplay
         db = SessionLocal()
         try:
+            update_timed_to_inplay(db)
             result = fetch_live_scores(db)
             if result["live_matches"]:
                 logger.info(
