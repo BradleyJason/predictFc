@@ -129,15 +129,33 @@ def generate_smart_ticket(
     correlated_warning: Optional[str] = None
     seen_matches_simple: set[int] = set()
 
+    is_combined = request.mode in ("combined", "hot") and len(request.match_ids) > 1
+
+    # Phase 1 (combiné) : garantir au moins 1 pari par match
+    if is_combined:
+        for match_id in request.match_ids:
+            match_candidates = [c for c in candidates if c.match_id == match_id]
+            for cand in match_candidates:
+                is_corr = False
+                for already in selected:
+                    if already.match_id == cand.match_id:
+                        pair = frozenset({already.bet_type, cand.bet_type})
+                        if pair in _CORRELATED_PAIRS:
+                            is_corr = True
+                            break
+                if not is_corr:
+                    selected.append(cand)
+                    seen_matches_simple.add(cand.match_id)
+                    break
+
+    # Phase 2 : compléter avec les meilleurs paris restants
     for cand in candidates:
         if len(selected) >= MAX_SELECTIONS:
             break
-
-        # Mode simple : 1 seul pari par match
         if request.mode == "simple" and cand.match_id in seen_matches_simple:
             continue
-
-        # Anti-corrélation intra-match
+        if any(s.match_id == cand.match_id and s.bet_type == cand.bet_type for s in selected):
+            continue
         is_correlated = False
         for already in selected:
             if already.match_id == cand.match_id:
@@ -149,7 +167,6 @@ def generate_smart_ticket(
                         "— sélection ajustée automatiquement."
                     )
                     break
-
         if not is_correlated:
             selected.append(cand)
             seen_matches_simple.add(cand.match_id)

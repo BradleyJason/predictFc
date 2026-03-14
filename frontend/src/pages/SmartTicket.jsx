@@ -25,6 +25,7 @@ export default function SmartTicket() {
   const [showCompMenu, setShowCompMenu] = useState(false)
   const [page, setPage] = useState(1)
   const PAGE_SIZE = 15
+  const MAX_SELECTIONS = 8
   const [comps,     setComps]     = useState([])
 
   useEffect(() => {
@@ -36,7 +37,8 @@ export default function SmartTicket() {
       date_to:   to.toISOString().split('T')[0],
       status:    'SCHEDULED,TIMED',
     }).then(r => {
-      const list = (r.data?.matches || [])
+      const now = new Date()
+      const list = (r.data?.matches || []).filter(m => m.match_date && new Date(m.match_date) > now)
       setMatches(list)
 
       // Grouper par date
@@ -63,11 +65,19 @@ export default function SmartTicket() {
   const toggle = (id) => {
     setSelected(prev => {
       const next = new Set(prev)
-      next.has(id) ? next.delete(id) : next.add(id)
+      if (next.has(id)) {
+        next.delete(id)
+      } else if (next.size < MAX_SELECTIONS) {
+        next.add(id)
+      }
       return next
     })
     setResult(null)
+    setShowModal(false)
+    setTicketCache({})
   }
+
+  const clearAll = () => { setSelected(new Set()); setResult(null); setShowModal(false); setTicketCache({}) }
 
   const selectAll = () => {
     const visible = filteredMatches().map(m => m.id)
@@ -78,7 +88,6 @@ export default function SmartTicket() {
     })
   }
 
-  const clearAll = () => { setSelected(new Set()); setResult(null) }
 
   const TOP_COMP_IDS = [39, 61, 140, 78, 135, 2, 3, 848, 94, 88]
 
@@ -124,12 +133,15 @@ export default function SmartTicket() {
   const generate = async () => {
     if (selected.size < 1) return
     const cacheKey = getCacheKey(selected, mode)
+    console.log('cacheKey:', cacheKey, 'cache keys:', Object.keys(ticketCache))
     // Réouverture si déjà généré
     if (ticketCache[cacheKey]) {
+      console.log('CACHE HIT')
       setResult(ticketCache[cacheKey])
       setShowModal(true)
       return
     }
+    console.log('CACHE MISS — appel API')
     setLoading(true); setResult(null)
     try {
       const backendMode = MODE_MAP[mode] || 'combined'
@@ -143,14 +155,17 @@ export default function SmartTicket() {
       }
     } catch (err) {
       const detail = err?.response?.data?.detail
-      setResult({ error: detail || 'Erreur lors de la génération.' })
+      let errorMsg = 'Erreur lors de la génération.'
+      if (typeof detail === 'string') errorMsg = detail
+      else if (Array.isArray(detail)) errorMsg = detail.map(d => d.msg).join(', ')
+      setResult({ error: errorMsg })
     }
     setLoading(false)
   }
 
   const selMode  = MODES.find(m => m.key === mode)
   const selMatches = matches.filter(m => selected.has(m.id))
-  const canGen   = selected.size >= (mode.includes('combined') ? 2 : 1)
+  const canGen   = mode !== null && selected.size >= (mode?.includes('combined') ? 2 : 1)
 
   return (
     <>
@@ -224,7 +239,7 @@ export default function SmartTicket() {
                         display: 'grid', gridTemplateColumns: '28px 1fr auto',
                         alignItems: 'center', gap: '10px',
                         padding: '8px 14px',
-                        background: sel ? 'rgba(0,255,136,0.06)' : 'var(--bg-surface)',
+                        background: sel ? 'rgba(0,255,136,0.06)' : 'var(--bg-surface)', opacity: (!sel && selected.size >= MAX_SELECTIONS) ? 0.4 : 1,
                         border: `1px solid ${sel ? 'rgba(0,255,136,0.35)' : 'var(--border)'}`,
                         borderRadius: '4px', cursor: 'pointer',
                         transition: 'all 0.15s ease',
@@ -342,7 +357,7 @@ export default function SmartTicket() {
           <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: '6px', padding: '16px' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
               <div style={{ fontFamily: 'var(--font-mono)', fontSize: '8px', letterSpacing: '0.18em', color: 'var(--text-muted)' }}>
-                SÉLECTION
+                SÉLECTION <span style={{ color: selected.size >= MAX_SELECTIONS ? '#ff6b35' : 'var(--text-muted)' }}>({selected.size}/{MAX_SELECTIONS})</span>
               </div>
               <span style={{
                 fontFamily: 'var(--font-mono)', fontSize: '9px', fontWeight: 700,
@@ -366,7 +381,7 @@ export default function SmartTicket() {
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
                       {m.home_team?.crest_url && <img src={m.home_team.crest_url} alt="" width={14} height={14} style={{ objectFit: 'contain', flexShrink: 0 }} onError={e => e.target.style.display = 'none'} />}
                       <span style={{ fontFamily: 'var(--font-mono)', fontSize: '9px', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {m.home_team?.short_name || '?'} vs {m.away_team?.short_name || '?'}
+                        {m.home_team?.short_name || m.home_team?.name || '?'} vs {m.away_team?.short_name || m.away_team?.name || '?'}
                       </span>
                     </div>
                     <button onClick={(e) => { e.stopPropagation(); toggle(m.id) }} style={{

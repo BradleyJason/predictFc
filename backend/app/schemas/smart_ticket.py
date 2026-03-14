@@ -6,7 +6,7 @@ from app.schemas.prediction import DISCLAIMER
 
 class SmartTicketRequest(BaseModel):
     """Input body for POST /smart-ticket."""
-    match_ids: list[int] = Field(..., min_length=1, max_length=5)
+    match_ids: list[int] = Field(..., min_length=1, max_length=8)
     mode: Literal["simple", "combined", "hot"] = "combined"
 
     @field_validator("match_ids")
