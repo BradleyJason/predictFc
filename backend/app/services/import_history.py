@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 CHECKPOINT_FILE = Path("/tmp/import_checkpoint.json")
 
 # Saisons a importer
-SEASONS = [2020, 2021, 2022, 2023, 2024]
+SEASONS = [2020, 2021, 2022, 2023, 2024, 2025]
 
 # Competitions prioritaires (championnats + CL d'abord)
 PRIORITY_COMPETITIONS = [

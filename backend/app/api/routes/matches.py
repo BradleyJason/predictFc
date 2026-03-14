@@ -39,7 +39,11 @@ def list_matches(
     if season_id is not None:
         q = q.where(Match.season_id == season_id)
     if status:
-        q = q.where(Match.status == status.upper())
+        statuses = [s.strip().upper() for s in status.split(',')]
+        if len(statuses) == 1:
+            q = q.where(Match.status == statuses[0])
+        else:
+            q = q.where(Match.status.in_(statuses))
     if date_from:
         q = q.where(Match.match_date >= date_from)
     if date_to:

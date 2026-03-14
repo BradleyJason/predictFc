@@ -23,6 +23,8 @@ export default function SmartTicket() {
   const [showModal,  setShowModal]  = useState(false)
   const [ticketCache, setTicketCache] = useState({})
   const [showCompMenu, setShowCompMenu] = useState(false)
+  const [page, setPage] = useState(1)
+  const PAGE_SIZE = 15
   const [comps,     setComps]     = useState([])
 
   useEffect(() => {
@@ -32,7 +34,7 @@ export default function SmartTicket() {
       limit:     200,
       date_from: now.toISOString().split('T')[0],
       date_to:   to.toISOString().split('T')[0],
-      status:    'TIMED',
+      status:    'SCHEDULED,TIMED',
     }).then(r => {
       const list = (r.data?.matches || [])
       setMatches(list)
@@ -78,12 +80,29 @@ export default function SmartTicket() {
 
   const clearAll = () => { setSelected(new Set()); setResult(null) }
 
-  const filteredMatches = () =>
-    compFilter === 'ALL' ? matches
-      : matches.filter(m => m.competition?.id === compFilter)
+  const TOP_COMP_IDS = [39, 61, 140, 78, 135, 2, 3, 848, 94, 88]
+
+  const filteredMatches = () => {
+    let fm
+    if (compFilter === 'ALL') fm = matches
+    else if (compFilter === 'TOP') {
+      const TOP_CODES = ['PL','FL1','PD','BL1','SA','CL','EL','ECL']
+      fm = matches.filter(m => TOP_CODES.includes(m.competition?.code))
+    }
+    else fm = matches.filter(m => m.competition?.id === compFilter)
+    return [...fm].sort((a, b) => new Date(a.match_date) - new Date(b.match_date))
+  }
+
+  const paginatedMatches = () => {
+    const fm = filteredMatches()
+    const start = (page - 1) * PAGE_SIZE
+    return fm.slice(start, start + PAGE_SIZE)
+  }
+
+  const totalPages = () => Math.ceil(filteredMatches().length / PAGE_SIZE)
 
   const filteredGrouped = () => {
-    const fm = filteredMatches()
+    const fm = paginatedMatches()
     const grp = {}
     fm.forEach(m => {
       const d = m.match_date ? m.match_date.split('T')[0] : 'Inconnu'
@@ -156,7 +175,7 @@ export default function SmartTicket() {
           <CompDropdown
             comps={comps}
             compFilter={compFilter}
-            setCompFilter={setCompFilter}
+            setCompFilter={(id) => { setCompFilter(id); setPage(1) }}
             showCompMenu={showCompMenu}
             setShowCompMenu={setShowCompMenu}
             filteredCount={filteredMatches().length}
@@ -202,9 +221,9 @@ export default function SmartTicket() {
                     const away = m.away_team?.short_name || m.away_team?.name || '—'
                     return (
                       <div key={m.id} onClick={() => toggle(m.id)} style={{
-                        display: 'grid', gridTemplateColumns: '28px 1fr auto 1fr auto',
+                        display: 'grid', gridTemplateColumns: '28px 1fr auto',
                         alignItems: 'center', gap: '10px',
-                        padding: '10px 14px',
+                        padding: '8px 14px',
                         background: sel ? 'rgba(0,255,136,0.06)' : 'var(--bg-surface)',
                         border: `1px solid ${sel ? 'rgba(0,255,136,0.35)' : 'var(--border)'}`,
                         borderRadius: '4px', cursor: 'pointer',
@@ -224,28 +243,33 @@ export default function SmartTicket() {
                           {sel && <span style={{ fontSize: '10px', color: '#06060e', fontWeight: 700 }}>✓</span>}
                         </div>
 
-                        {/* Équipe domicile */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '7px', minWidth: 0, justifyContent: 'flex-end' }}>
-                          <span style={{ fontFamily: 'var(--font-display)', fontSize: '13px', color: sel ? 'var(--text-primary)' : 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {home}
-                          </span>
-                          {m.home_team?.crest_url && <img src={m.home_team.crest_url} alt="" width={34} height={34} style={{ objectFit: 'contain', flexShrink: 0 }} onError={e => e.target.style.display = 'none'} />}
-                        </div>
-
-                        {/* VS + heure */}
-                        <div style={{ textAlign: 'center', flexShrink: 0 }}>
-                          <div style={{ fontFamily: 'var(--font-mono)', fontSize: '9px', color: 'var(--text-muted)', letterSpacing: '0.1em' }}>VS</div>
-                          <div style={{ fontFamily: 'var(--font-mono)', fontSize: '8px', color: 'var(--text-muted)' }}>
-                            {m.match_date ? new Date(m.match_date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '—'}
+                        {/* Match centré : NOM [LOGO] VS [LOGO] NOM */}
+                        <div style={{ display: 'flex', alignItems: 'center', flex: 1, minWidth: 0 }}>
+                          {/* Domicile */}
+                          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px', minWidth: 0 }}>
+                            <span style={{ fontFamily: 'var(--font-display)', fontSize: '13px', color: sel ? 'var(--text-primary)' : 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {home}
+                            </span>
+                            {m.home_team?.crest_url
+                              ? <img src={m.home_team.crest_url} alt="" width={34} height={34} style={{ objectFit: 'contain', flexShrink: 0 }} onError={e => e.target.style.display='none'} />
+                              : <div style={{ width: 34, height: 34, flexShrink: 0 }} />}
                           </div>
-                        </div>
-
-                        {/* Équipe extérieur */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '7px', minWidth: 0 }}>
-                          {m.away_team?.crest_url && <img src={m.away_team.crest_url} alt="" width={34} height={34} style={{ objectFit: 'contain', flexShrink: 0 }} onError={e => e.target.style.display = 'none'} />}
-                          <span style={{ fontFamily: 'var(--font-display)', fontSize: '13px', color: sel ? 'var(--text-primary)' : 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {away}
-                          </span>
+                          {/* VS + heure */}
+                          <div style={{ textAlign: 'center', flexShrink: 0, padding: '0 10px' }}>
+                            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '9px', color: 'var(--text-muted)', letterSpacing: '0.1em' }}>VS</div>
+                            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '8px', color: 'var(--text-muted)' }}>
+                              {m.match_date ? new Date(m.match_date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '—'}
+                            </div>
+                          </div>
+                          {/* Extérieur */}
+                          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'flex-start', gap: '8px', minWidth: 0 }}>
+                            {m.away_team?.crest_url
+                              ? <img src={m.away_team.crest_url} alt="" width={34} height={34} style={{ objectFit: 'contain', flexShrink: 0 }} onError={e => e.target.style.display='none'} />
+                              : <div style={{ width: 34, height: 34, flexShrink: 0 }} />}
+                            <span style={{ fontFamily: 'var(--font-display)', fontSize: '13px', color: sel ? 'var(--text-primary)' : 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {away}
+                            </span>
+                          </div>
                         </div>
 
                         {/* Compétition */}
@@ -262,6 +286,16 @@ export default function SmartTicket() {
               </div>
             ))
           )}
+        {/* Pagination */}
+        {totalPages() > 1 && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', marginTop: '16px', paddingBottom: '8px' }}>
+            <PagBtn onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}>←</PagBtn>
+            {Array.from({ length: totalPages() }, (_, i) => i + 1).map(p => (
+              <PagBtn key={p} onClick={() => setPage(p)} active={page === p}>{p}</PagBtn>
+            ))}
+            <PagBtn onClick={() => setPage(p => Math.min(totalPages(), p + 1))} disabled={page === totalPages()}>→</PagBtn>
+          </div>
+        )}
         </div>
 
         {/* ── Colonne droite : panneau ticket ── */}
@@ -403,6 +437,8 @@ export default function SmartTicket() {
   )
 }
 
+const TOP_COMP_IDS = [39, 61, 140, 78, 135, 2, 3, 848, 94, 88]  // 5 grands + Europa + Conference + Primeira + Eredivisie
+
 const COMP_GROUPS = [
   { key: "europe",         label: "Europe",       icon: "🏆", ids: [16, 45, 46, 47] },
   { key: "england",        label: "Angleterre",   icon: "🏴", ids: [4, 25, 30, 39, 40] },
@@ -415,13 +451,26 @@ const COMP_GROUPS = [
 ]
 
 function CompDropdown({ comps, compFilter, setCompFilter, showCompMenu, setShowCompMenu, filteredCount }) {
+  const ref = React.useRef(null)
+  const [topOnly, setTopOnly] = React.useState(false)
+
+  React.useEffect(() => {
+    const handler = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) {
+        setShowCompMenu(false)
+      }
+    }
+    if (showCompMenu) document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [showCompMenu])
   const selectedComp = comps.find(c => c.id === compFilter)
-  const label = compFilter === 'ALL' ? 'TOUTES LES COMPÉTITIONS' : selectedComp?.name?.toUpperCase() || 'TOUTES'
+  const isTop = compFilter === 'TOP'
+  const label = compFilter === 'ALL' ? 'TOUTES LES COMPÉTITIONS' : compFilter === 'TOP' ? 'TOP MATCHS' : selectedComp?.name?.toUpperCase() || 'TOUTES'
 
   const getCompsForGroup = (ids) => comps.filter(c => ids.includes(c.id))
 
   return (
-    <div style={{ position: 'relative', marginBottom: '14px' }}>
+    <div ref={ref} style={{ position: 'relative', marginBottom: '14px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
         {/* Bouton TOUS */}
         <button onClick={() => { setCompFilter('ALL'); setShowCompMenu(false) }} style={{
@@ -432,6 +481,18 @@ function CompDropdown({ comps, compFilter, setCompFilter, showCompMenu, setShowC
           fontFamily: 'var(--font-mono)', fontSize: '9px', fontWeight: compFilter === 'ALL' ? 700 : 400,
           letterSpacing: '0.08em', whiteSpace: 'nowrap',
         }}>TOUS</button>
+
+        {/* Bouton TOP MATCHS */}
+        <button onClick={() => { setCompFilter(compFilter === 'TOP' ? 'ALL' : 'TOP'); setShowCompMenu(false) }} style={{
+          padding: '5px 12px', borderRadius: '20px', cursor: 'pointer',
+          background: compFilter === 'TOP' ? 'rgba(255,170,0,0.15)' : 'var(--bg-surface)',
+          border: compFilter === 'TOP' ? '1px solid rgba(255,170,0,0.5)' : '1px solid var(--border)',
+          color: compFilter === 'TOP' ? 'var(--accent-amber)' : 'var(--text-muted)',
+          fontFamily: 'var(--font-mono)', fontSize: '9px',
+          fontWeight: compFilter === 'TOP' ? 700 : 400,
+          letterSpacing: '0.08em', whiteSpace: 'nowrap',
+          transition: 'all 0.15s',
+        }}>⭐ TOP MATCHS</button>
 
         {/* Bouton dropdown compétitions */}
         <button onClick={() => setShowCompMenu(p => !p)} style={{
@@ -976,5 +1037,23 @@ function TicketRecommendation({ byMatch, preds, meta, getMatch, seuil, seuilMax 
         })}
       </div>
     </div>
+  )
+}
+
+function PagBtn({ children, onClick, active, disabled }) {
+  return (
+    <button onClick={onClick} disabled={disabled} style={{
+      width: '32px', height: '32px', borderRadius: '4px',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      background: active ? 'var(--accent-green)' : 'var(--bg-surface)',
+      border: `1px solid ${active ? 'var(--accent-green)' : 'var(--border)'}`,
+      color: active ? '#06060e' : disabled ? 'var(--text-muted)' : 'var(--text-secondary)',
+      fontFamily: 'var(--font-mono)', fontSize: '10px', fontWeight: active ? 700 : 400,
+      cursor: disabled ? 'not-allowed' : 'pointer',
+      opacity: disabled ? 0.4 : 1,
+      transition: 'all 0.15s',
+    }}>
+      {children}
+    </button>
   )
 }
